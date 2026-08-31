@@ -310,21 +310,26 @@ function rowMenuActions(row) {
   return items
 }
 
-// The second line under a container's name: how it is behaving (health,
-// live CPU/RAM when known), not what it is — the image is the longest field
-// and lives in the expanded detail instead.
-function detailLine(row, stat) {
+// The second line under a container's name: docker's own status (uptime,
+// or "Exited …") plus live CPU/RAM when known — nothing else. Health,
+// compose project, restart count, and ports are only interesting once you
+// have already decided to look closer, so they live in expandedMeta/the
+// expanded row instead of crowding the list.
+function rowStatLine(row, stat) {
+  if (!stat) return ""
+  return "cpu " + formatPercent(stat.cpuPercent) + " · " + formatBytes(stat.memUsedBytes)
+}
+
+// The extra context shown only once a row is expanded: health (while it
+// means something — active and not a plain "healthy"), compose project,
+// restart count. Ports get their own line next to this, since there can be
+// several.
+function expandedMeta(row) {
   if (!row) return ""
   var parts = []
   if (row.active && row.health && row.health !== "healthy") parts.push(row.health)
-  if (stat) {
-    parts.push("cpu " + formatPercent(stat.cpuPercent))
-    parts.push(formatBytes(stat.memUsedBytes))
-  }
   if (row.project) parts.push(row.project)
   if (row.restarts > 0) parts.push(row.restarts + (row.restarts === 1 ? " restart" : " restarts"))
-  if (row.ports.length === 1) parts.push("port " + row.ports[0].host)
-  else if (row.ports.length > 1) parts.push(row.ports.length + " ports")
   return parts.join(" · ")
 }
 
@@ -436,7 +441,8 @@ if (typeof module !== "undefined") {
     formatBytes: formatBytes,
     rowActions: rowActions,
     rowMenuActions: rowMenuActions,
-    detailLine: detailLine,
+    rowStatLine: rowStatLine,
+    expandedMeta: expandedMeta,
     clampIndex: clampIndex,
     busyLabel: busyLabel,
     summary: summary,

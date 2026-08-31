@@ -172,6 +172,29 @@ assert.strictEqual(Model.clampIndex(5, 3), 2)
 assert.strictEqual(Model.clampIndex(-1, 3), 0)
 assert.strictEqual(Model.clampIndex(1, 0), 0)
 
+// ------------------------------------------------------------------ row text
+
+// The row's own line is up-time plus live CPU/RAM, nothing else — no
+// health, project, restarts, or ports. Those only show once expanded.
+assert.strictEqual(Model.rowStatLine(runningRow, undefined), "")
+assert.strictEqual(
+  Model.rowStatLine(runningRow, { cpuPercent: 12.34, memUsedBytes: 1024 * 1024 * 340 }),
+  "cpu 12% · 340 MiB"
+)
+
+assert.strictEqual(Model.expandedMeta({ active: false, health: "", project: "", restarts: 0 }), "")
+assert.strictEqual(
+  Model.expandedMeta({ active: true, health: "unhealthy", project: "myapp", restarts: 2 }),
+  "unhealthy · myapp · 2 restarts"
+)
+// Health only means something while the container is active; a stopped
+// container's last (possibly failing) probe isn't news.
+assert.strictEqual(
+  Model.expandedMeta({ active: false, health: "unhealthy", project: "", restarts: 0 }),
+  ""
+)
+assert.strictEqual(Model.expandedMeta({ active: true, health: "healthy", project: "", restarts: 1 }), "1 restart")
+
 assert.strictEqual(Model.busyLabel("stop"), "Stopping…")
 assert.strictEqual(Model.busyLabel("nonsense"), "Working…")
 

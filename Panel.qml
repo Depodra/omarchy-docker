@@ -261,9 +261,9 @@ Panel {
     }
   }
 
-  // A compact CPU/RAM readout — used both for the panel's total and, at a
-  // smaller size, is mirrored inline per row via Model.detailLine instead
-  // (a full card per row would be more chrome than a container list needs).
+  // A compact CPU/RAM readout — used for the panel's total; a full card per
+  // row would be more chrome than a container list needs, so each row gets
+  // Model.rowStatLine's plain text instead.
   component TotalStat: Column {
     property string label: ""
     property string value: ""
@@ -500,9 +500,11 @@ Panel {
 
                       Text {
                         width: parent.width
+                        // Up-time and live CPU/RAM only — health, project,
+                        // restarts, and ports are for the expanded row.
                         text: rowEntry.busy
                           ? Model.busyLabel(root.busyAction)
-                          : (Model.statusText(rowEntry.modelData) + (Model.detailLine(rowEntry.modelData, rowEntry.stat) !== "" ? " · " + Model.detailLine(rowEntry.modelData, rowEntry.stat) : ""))
+                          : (Model.statusText(rowEntry.modelData) + (Model.rowStatLine(rowEntry.modelData, rowEntry.stat) !== "" ? " · " + Model.rowStatLine(rowEntry.modelData, rowEntry.stat) : ""))
                         color: Model.needsAttention(rowEntry.modelData) ? Color.urgent : root.faint
                         font.family: root.fontFamily
                         font.pixelSize: Style.font.caption
@@ -548,6 +550,16 @@ Panel {
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
                     elide: Text.ElideMiddle
+                  }
+
+                  Text {
+                    width: parent.width
+                    visible: text !== ""
+                    text: Model.expandedMeta(rowEntry.modelData)
+                    color: Model.needsAttention(rowEntry.modelData) ? Color.urgent : root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    wrapMode: Text.WordWrap
                   }
 
                   Text {
