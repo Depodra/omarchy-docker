@@ -1,0 +1,60 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Model tests
+        run: node tests/model.test.js
+
+      - name: Helper script parses
+        run: bash -n bin/omarchy-docker-ctl
+
+      # The plugin runs this file directly. A lost mode bit would break
+      # every action with a permission error and nothing else would notice.
+      - name: Helper script is executable
+        run: test -x bin/omarchy-docker-ctl
+
+      - name: Manifest is valid JSON
+        run: node -e "JSON.parse(require('fs').readFileSync('manifest.json', 'utf8'))"
+
+      # ubuntu-latest ships Docker preinstalled and running. This exercises
+      # the helper against a real daemon so a template or parsing mistake in
+      # `list`/`stats` shows up here rather than on someone's machine.
+      - name: Helper runs against a real daemon
+        run: |
+          docker run -d --name omarchy-docker-ci --label com.docker.compose.project=ci alpine:latest sleep 60
+          trap 'docker rm -f omarchy-docker-ci >/dev/null 2>&1 || true' EXIT
+
+          list_out=$(./bin/omarchy-docker-ctl list)
+          echo "$list_out"
+          grep -qP '^omarchy-docker-ci\x1f' <<<"$list_out"
+
+          stats_out=$(./bin/omarchy-docker-ctl stats)
+          echo "$stats_out"
+          grep -qP '^#meta\x1f\d+\x1f\d+$' <<<"$stats_out"
+          grep -qP '^omarchy-docker-ci\x1f' <<<"$stats_out"
+
+          ./bin/omarchy-docker-ctl restart omarchy-docker-ci
+          ./bin/omarchy-docker-ctl stop omarchy-docker-ci 5
+          docker ps -a --filter name=omarchy-docker-ci --format '{{.Status}}' | grep -qi '^Exited'
+
+          # remove refuses anything docker itself would refuse, and only that
+          if ./bin/omarchy-docker-ctl remove nonexistent-container 2>/dev/null; then
+            echo "expected remove of a nonexistent container to fail" >&2
+            exit 1
+          fi
+          ./bin/omarchy-docker-ctl remove omarchy-docker-ci
+          docker ps -a --filter name=omarchy-docker-ci --format '{{.Names}}' | grep -q . && exit 1 || true
