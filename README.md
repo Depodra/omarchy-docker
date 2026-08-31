@@ -159,15 +159,15 @@ through Setup > Plugins.
 ## Requirements
 
 - [Omarchy](https://omarchy.org/) with `omarchy-shell` (the Quickshell bar).
-- `docker`, with your user already able to run it without `sudo` (usually
-  membership in the `docker` group).
+- `docker`, with your user already able to run it without sudo. That
+  usually means membership in the `docker` group.
 - `omarchy-launch-terminal` for logs and shells, and optionally
   `omarchy-launch-browser` (or `xdg-open`) for opening a published port —
   both ship with a base Omarchy install.
 
 ## Privileges and security
 
-- **No `sudo`, no `pkexec`, no polkit.** Every docker call is the plain
+- **No sudo, no pkexec, no polkit.** Every docker call is the plain
   `docker` CLI run as your user. If it can't reach the daemon or the socket
   refuses your user, the popup says which and does nothing else.
 - Membership in the `docker` group is effectively root on the host — that's
