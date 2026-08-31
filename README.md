@@ -1,11 +1,14 @@
 # Docker
 
+**The last Docker widget you'll install.** Everything you actually do to a
+container is one click away in the bar — and nothing you don't.
+
 An [Omarchy](https://omarchy.org/) bar plugin for Docker. It does the
 everyday things — start, stop, restart, pause and remove containers, read
 their logs, open a shell, watch live CPU and RAM per container and in
 total — and nothing else. No VM support, no RDP sessions, no daemon it
-tries to fix for you: one whale icon, one popup, the docker commands you'd
-otherwise be typing by hand.
+tries to fix for you, no privileges it asks you for: one whale icon, one
+popup, the docker commands you'd otherwise be typing by hand.
 
 ## What it gives you
 

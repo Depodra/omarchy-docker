@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "Majkelll",
   "license": "MIT",
-  "description": "Manage Docker containers from the Omarchy bar: start, stop, restart, pause and remove them, view logs or open a shell, and see live CPU/RAM per container and in total.",
+  "description": "Everything you need for Docker in the bar, and nothing you don't: start, stop, restart, pause and remove containers, view logs or open a shell, and watch live CPU/RAM per container and in total. No privileges asked for, nothing written to disk.",
   "kinds": [
     "bar-widget"
   ],
