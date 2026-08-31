@@ -1,0 +1,274 @@
+#!/bin/bash
+
+# The only place this plugin talks to the docker CLI. One subcommand per
+# call, plain text out, never JSON — the panel parses lines, not a document.
+#
+# Every row (from `list` or `stats`) is fields joined by \x1f (unit
+# separator), never a tab: a container name or label is free-form text and
+# could contain one, but never a \x1f.
+#
+# `list` — one line per container:
+#   name \x1f image \x1f state \x1f status \x1f project \x1f health \x1f restarts \x1f ports
+# `ports` is "8080>80/tcp 5432>5432/tcp", read from HostConfig.PortBindings,
+# which (unlike NetworkSettings.Ports) survives a stopped container.
+#
+# `stats` — a leading meta line, then one line per *running* container
+# (docker stats says nothing about the others):
+#   #meta \x1f <nproc> \x1f <memTotalKB>
+#   name \x1f cpuPerc \x1f memUsage \x1f memPerc
+# The byte/percent math on those strings happens in Model.js, not here —
+# bash has no floats.
+#
+# Every read is capped before it is parsed, so a host with a pathological
+# number of containers (or one pathological name) cannot grow this
+# long-running call unboundedly.
+
+set -uo pipefail
+
+readonly FS=$'\x1f'
+readonly MAX_ROWS=200
+readonly MAX_BYTES=262144
+readonly DEFAULT_STOP_TIMEOUT=10
+readonly REMOVABLE_STATES=" created exited dead "
+
+die() {
+  printf '%s\n' "$1" >&2
+  exit 1
+}
+
+require_docker() {
+  command -v docker >/dev/null 2>&1 || die "docker-missing"
+}
+
+# `docker version` reaches the daemon; its stderr says why it could not, and
+# is the one place we distinguish "no permission on the socket" from "the
+# daemon just isn't running" rather than reporting both as one generic error.
+docker_permission_denied() {
+  local out
+  out=$(docker version 2>&1)
+  [[ ${out,,} == *"permission denied"* ]]
+}
+
+diagnose_unreachable() {
+  if docker_permission_denied; then die "docker-permission"; fi
+  die "daemon-unreachable"
+}
+
+# Runs the given command, reports success silently, or dies with docker's own
+# first line of stderr — "port is already allocated" tells a person more than
+# a generic "could not start it" ever could. Falls back to $1 only when
+# docker had nothing to say.
+docker_do() {
+  local fallback=$1
+  shift
+  local err
+  if err=$("$@" 2>&1 >/dev/null); then return 0; fi
+  err=$(printf '%s' "$err" | head -1)
+  die "${err:-$fallback}"
+}
+
+# A hard ceiling on any docker read before it is parsed: bytes first, then
+# lines, so neither a giant field nor a huge container count can grow this
+# call past what the panel is ever going to read.
+bounded_lines() {
+  head -c "$MAX_BYTES" | head -n "$1"
+}
+
+container_state() {
+  docker inspect --format '{{.State.Status}}' -- "$1" 2>/dev/null
+}
+
+# --------------------------------------------------------------------- list
+
+cmd_list() {
+  require_docker
+
+  local tpl raw
+  tpl="{{.Names}}${FS}{{.Image}}${FS}{{.State}}${FS}{{.Status}}${FS}{{.Label \"com.docker.compose.project\"}}${FS}{{.ID}}"
+
+  raw=$(docker ps -a --format "$tpl" 2>/dev/null | bounded_lines "$MAX_ROWS") || {
+    diagnose_unreachable
+    return
+  }
+  [[ -z $raw ]] && return 0
+
+  # One batched inspect across every id, never one call per row — the
+  # difference between this costing ~60ms and costing ~60ms times however
+  # many containers exist.
+  local ids=()
+  while IFS="$FS" read -r name image state status project id; do
+    [[ -n $id ]] && ids+=("$id")
+  done <<<"$raw"
+
+  local detail_tpl detail_raw=""
+  # `with` on HostPort skips a binding docker has not resolved a host port
+  # for yet (a dynamic `-p 5432` between being requested and actually
+  # assigned) rather than emitting a blank one the panel could not parse.
+  detail_tpl="{{.Name}}${FS}{{with index .State \"Health\"}}{{.Status}}{{end}}${FS}{{.RestartCount}}${FS}{{if .HostConfig.PortBindings}}{{range \$p, \$b := .HostConfig.PortBindings}}{{if \$b}}{{with (index \$b 0).HostPort}}{{.}}>{{\$p}} {{end}}{{end}}{{end}}{{end}}"
+
+  if (( ${#ids[@]} > 0 )); then
+    # A container removed between the two calls just drops out of the
+    # enrichment map below; it is not a reason to fail the whole listing.
+    detail_raw=$(docker inspect --format "$detail_tpl" "${ids[@]}" 2>/dev/null | bounded_lines "$MAX_ROWS")
+  fi
+
+  declare -A health_by=()
+  declare -A restarts_by=()
+  declare -A ports_by=()
+  if [[ -n $detail_raw ]]; then
+    while IFS="$FS" read -r dname dhealth drestarts dports; do
+      dname=${dname#/}
+      [[ -n $dname ]] || continue
+      health_by["$dname"]=$dhealth
+      restarts_by["$dname"]=$drestarts
+      ports_by["$dname"]=$dports
+    done <<<"$detail_raw"
+  fi
+
+  while IFS="$FS" read -r name image state status project id; do
+    [[ -n $name ]] || continue
+    printf '%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\n' \
+      "$name" "$image" "$state" "$status" "$project" \
+      "${health_by[$name]:-}" "${restarts_by[$name]:-0}" "${ports_by[$name]:-}"
+  done <<<"$raw"
+}
+
+# -------------------------------------------------------------------- stats
+
+cmd_stats() {
+  require_docker
+
+  local nproc_n mem_kb
+  nproc_n=$(nproc 2>/dev/null) || nproc_n=1
+  mem_kb=$(awk '/^MemTotal:/ { print $2; exit }' /proc/meminfo 2>/dev/null)
+  [[ $mem_kb =~ ^[0-9]+$ ]] || mem_kb=0
+
+  printf '#meta\x1f%s\x1f%s\n' "${nproc_n:-1}" "$mem_kb"
+
+  # Deliberately its own call, on its own slower timer on the QML side:
+  # `--no-stream` still waits about two seconds for a second sample,
+  # regardless of how many containers exist, against tens of milliseconds
+  # for `list`.
+  local raw
+  raw=$(docker stats --no-stream --format "{{.Name}}${FS}{{.CPUPerc}}${FS}{{.MemUsage}}${FS}{{.MemPerc}}" 2>/dev/null \
+    | bounded_lines "$MAX_ROWS") || {
+    diagnose_unreachable
+    return
+  }
+  [[ -n $raw ]] && printf '%s\n' "$raw"
+}
+
+# ----------------------------------------------------------------- actions
+
+cmd_lifecycle() {
+  local action=$1 name=$2 timeout=${3:-}
+  require_docker
+  [[ -n $name ]] || die "no-container"
+
+  case "$action" in
+    stop)
+      [[ $timeout =~ ^[0-9]+$ ]] || timeout=$DEFAULT_STOP_TIMEOUT
+      docker_do "stop-failed" docker stop -t "$timeout" -- "$name"
+      ;;
+    start | restart | pause | unpause | kill)
+      docker_do "${action}-failed" docker "$action" -- "$name"
+      ;;
+    *)
+      die "unknown-action"
+      ;;
+  esac
+}
+
+# Never forced: docker's own rule decides what may go, so nothing running,
+# paused, or restarting can be removed regardless of what a stale panel
+# believes. Plain `docker rm` — never -f, never -v — so the image and every
+# volume survive.
+cmd_remove() {
+  local name=$1
+  require_docker
+  [[ -n $name ]] || die "no-container"
+
+  local state
+  state=$(container_state "$name")
+  [[ -n $state ]] || die "no-such-container"
+  [[ $REMOVABLE_STATES == *" $state "* ]] || die "not-removable:$state"
+
+  docker_do "remove-failed" docker rm -- "$name"
+}
+
+# Stays open after the stream ends, rather than flashing shut the instant
+# `docker logs -f` exits on a stopped container. The name is a positional arg
+# to the inner script, never interpolated into it, so no container name can
+# be read as shell.
+cmd_logs() {
+  local name=$1
+  require_docker
+  [[ -n $name ]] || die "no-container"
+  command -v omarchy-launch-terminal >/dev/null 2>&1 || die "terminal-missing"
+
+  omarchy-launch-terminal -- bash -c '
+    docker logs -f --tail 200 -- "$1"
+    status=$?
+    [ "$status" -eq 130 ] && exit 0
+    printf "\n\n\xe2\x80\x94 end of logs \xe2\x80\x94 press any key to close \xe2\x80\x94"
+    read -r -n1 -s
+  ' _ "$name" &
+  disown
+}
+
+cmd_shell() {
+  local name=$1
+  require_docker
+  [[ -n $name ]] || die "no-container"
+
+  local state
+  state=$(container_state "$name")
+  [[ $state == "running" ]] || die "container-not-running"
+  command -v omarchy-launch-terminal >/dev/null 2>&1 || die "terminal-missing"
+
+  omarchy-launch-terminal -- docker exec -it -- "$name" sh -c '[ -x /bin/bash ] && exec bash || exec sh' &
+  disown
+}
+
+# A published port survives a stop, but nothing is listening on it, so this
+# is refused rather than opening a browser tab at a dead socket.
+cmd_open() {
+  local name=$1 port=$2
+  require_docker
+  [[ -n $name && $port =~ ^[0-9]+$ ]] || die "no-container"
+
+  local state
+  state=$(container_state "$name")
+  [[ $state == "running" ]] || die "container-not-running"
+
+  local url="http://127.0.0.1:${port}"
+  if command -v omarchy-launch-browser >/dev/null 2>&1; then
+    omarchy-launch-browser "$url" &
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$url" &
+  else
+    die "browser-missing"
+  fi
+  disown
+}
+
+# ---------------------------------------------------------------------- main
+
+main() {
+  local cmd=${1:-}
+  [[ $# -gt 0 ]] && shift
+
+  case "$cmd" in
+    list) cmd_list ;;
+    stats) cmd_stats ;;
+    stop) cmd_lifecycle stop "${1:-}" "${2:-}" ;;
+    start | restart | pause | unpause | kill) cmd_lifecycle "$cmd" "${1:-}" ;;
+    remove) cmd_remove "${1:-}" ;;
+    logs) cmd_logs "${1:-}" ;;
+    shell) cmd_shell "${1:-}" ;;
+    open) cmd_open "${1:-}" "${2:-}" ;;
+    *) die "unknown-command" ;;
+  esac
+}
+
+main "$@"
