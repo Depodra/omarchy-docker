@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.majkelll.omarchy-docker",
+  "name": "Docker",
+  "version": "1.0.0",
+  "author": "Majkelll",
+  "license": "MIT",
+  "description": "Manage Docker containers from the Omarchy bar: start, stop, restart, pause and remove them, view logs or open a shell, and see live CPU/RAM per container and in total.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Docker",
+    "description": "Container list with start/stop/restart, logs, shell, and live CPU/RAM per container and in total.",
+    "category": "System",
+    "aliases": [
+      "docker",
+      "containers"
+    ],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "listRefreshSec": 5,
+      "statsRefreshSec": 10,
+      "stopTimeoutSec": 10
+    },
+    "schema": [
+      {
+        "key": "listRefreshSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 2,
+        "max": 60,
+        "step": 1,
+        "defaultValue": 5,
+        "description": "How often the container list is refreshed while the popup is open. Closed, it backs off to 30 seconds."
+      },
+      {
+        "key": "statsRefreshSec",
+        "type": "integer",
+        "label": "CPU/RAM refresh interval (seconds)",
+        "min": 5,
+        "max": 60,
+        "step": 5,
+        "defaultValue": 10,
+        "description": "How often CPU and memory are sampled while the popup is open. Runs on its own slower timer, and not at all while closed, because docker stats waits about two seconds for every sample regardless of how many containers exist."
+      },
+      {
+        "key": "stopTimeoutSec",
+        "type": "integer",
+        "label": "Graceful stop timeout (seconds)",
+        "min": 1,
+        "max": 300,
+        "step": 5,
+        "defaultValue": 10,
+        "description": "How long docker may spend on a clean shutdown before it kills the container."
+      }
+    ]
+  }
+}
