@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.majkelll.omarchy-docker",
   "name": "Docker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Majkelll",
   "license": "MIT",
   "description": "Everything you need for Docker in the bar, and nothing you don't: start, stop, restart, pause and remove containers, view logs or open a shell, and watch live CPU/RAM per container and in total. No privileges asked for, nothing written to disk.",

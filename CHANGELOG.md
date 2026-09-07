@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1 - 2026-09-07
+
+- README: spell out the fix for "No permission on Docker's socket" —
+  `sudo usermod -aG docker $USER` plus a full re-login, not just a
+  `newgrp`. No code changes.
+
 ## 1.0.0 - 2026-08-31
 
 - First release: manage Docker containers from the Omarchy bar. The icon

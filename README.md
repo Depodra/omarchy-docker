@@ -160,7 +160,10 @@ through Setup > Plugins.
 
 - [Omarchy](https://omarchy.org/) with `omarchy-shell` (the Quickshell bar).
 - `docker`, with your user already able to run it without sudo. That
-  usually means membership in the `docker` group.
+  usually means membership in the `docker` group:
+  `sudo usermod -aG docker $USER`, then a full log out and back in (a plain
+  `newgrp` in one terminal isn't enough — `omarchy-shell` keeps the group
+  membership it had when it started).
 - `omarchy-launch-terminal` for logs and shells, and optionally
   `omarchy-launch-browser` (or `xdg-open`) for opening a published port —
   both ship with a base Omarchy install.
