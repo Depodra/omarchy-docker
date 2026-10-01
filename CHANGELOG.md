@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.1.0 - 2026-10-01
+
+- Group containers by compose project (the `com.docker.compose.project`
+  label). Each project is a collapsible header with its state summary,
+  combined CPU/RAM, and Start/Restart/Stop for the whole project through
+  `docker compose -p <project> start|stop|restart` — no compose file needed,
+  nothing recreated or removed. Expand a project for the per-container rows.
+  `groupByProject` setting (default on) turns it off.
+- Keyboard: `→`/`←` expand and collapse projects, `←` from a container
+  jumps to its project, `u`/`d` start/stop the selected project or
+  container.
+- IPC: `startGroup`, `stopGroup`, `restartGroup <project>`.
+- Logs and kill are `L` and `K`: the shared key handler always took
+  lowercase `l` and `k` for cursor movement, so the documented lowercase
+  shortcuts never fired.
+
 ## 1.0.1 - 2026-09-07
 
 - README: spell out the fix for "No permission on Docker's socket" —

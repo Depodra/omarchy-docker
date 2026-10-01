@@ -12,6 +12,10 @@ popup, the docker commands you'd otherwise be typing by hand.
 
 ## What it gives you
 
+- **Grouped by compose project.** Containers collapse under the compose
+  project that created them, each header showing the project's state and
+  combined CPU/RAM, with Start, Restart and Stop for the whole project.
+  Expand a project for the same per-container controls as before.
 - **A list you can act on without a second click.** Stop and Restart (or
   Start) sit right on the row. Removing is behind a confirmation that starts
   on Cancel, and only ever appears where docker will actually allow it —
@@ -53,10 +57,37 @@ That unloads the widget and deletes the plugin. Nothing is written outside
 the plugin's own directory, so there is nothing else to clean up — your
 containers, images, and volumes are never touched by removing the plugin.
 
+## Compose projects
+
+Containers are grouped by their `com.docker.compose.project` label — the
+one `docker compose` stamps on everything it creates — rather than by a
+guessed name prefix. Projects are listed alphabetically and start
+collapsed; containers without a project are listed after them on their own.
+Turn grouping off with the `groupByProject` setting to get the flat list
+back.
+
+A project header shows a summary of its containers' states
+("4 restarting · 6 stopped") and their combined CPU/RAM, and offers:
+
+| | |
+|---|---|
+| **▶ button** | Start all — `docker compose -p <project> start`, shown while anything in the project is stopped |
+| **↻ button** | Restart all — `docker compose -p <project> restart`, shown while anything is up |
+| **■ button** | Stop all — `docker compose -p <project> stop`, shown while anything is up |
+| **Click the header** | expand or collapse the project |
+
+These act on the containers the project already has, found by label, so
+they need neither the compose file nor the environment the project was
+brought up with, and nothing is recreated or removed: this is start/stop,
+not `up`/`down`. Compose still applies its own dependency order. The
+helper runs compose from `/` with `COMPOSE_FILE` cleared, so a compose file
+lying around in the shell's working directory can never stand in for the
+project.
+
 ## The container list
 
 Click the whale icon in the bar to open the popup. It shows the total
-CPU/RAM line, then one row per container:
+CPU/RAM line, then the projects, then one row per standalone container:
 
 | | |
 |---|---|
@@ -107,12 +138,16 @@ the container over the same volume gets it back.
 
 | Key | Does |
 |---|---|
-| `↑` `↓` / `j` `k` | move between containers |
-| `Enter` | expand the selected container |
+| `↑` `↓` / `j` `k` | move between projects and containers |
+| `→` / `l` | expand the selected project |
+| `←` / `h` | collapse the selected project, or jump from a container to its project |
+| `Enter` | expand the selected project or container |
+| `u` | up: start the selected project or container |
+| `d` | down: stop the selected project or container |
 | `x` | ask to remove the selected container |
-| `l` | view its logs |
+| `L` | view its logs |
 | `p` | pause or resume it |
-| `k` | kill it |
+| `K` | kill it |
 | `o` | open its first published port |
 | `r` | refresh the list now |
 | `Esc` | close the popup, or cancel a confirmation |
@@ -130,6 +165,7 @@ omarchy-shell io.github.majkelll.omarchy-docker list                # a one-line
 omarchy-shell io.github.majkelll.omarchy-docker refresh             # refresh the list now
 omarchy-shell io.github.majkelll.omarchy-docker start|stop|restart <name>
 omarchy-shell io.github.majkelll.omarchy-docker pause|unpause|kill <name>
+omarchy-shell io.github.majkelll.omarchy-docker startGroup|stopGroup|restartGroup <project>
 omarchy-shell io.github.majkelll.omarchy-docker remove <name>       # opens the popup and asks — never deletes outright
 omarchy-shell io.github.majkelll.omarchy-docker logs <name>         # opens a terminal with the container's logs
 omarchy-shell io.github.majkelll.omarchy-docker shell <name>        # opens a terminal shell in the container
@@ -154,12 +190,14 @@ through Setup > Plugins.
 |---|---|---|
 | `listRefreshSec` | `5` | List refresh cadence while the popup is open. Closed, it backs off to 30s. |
 | `statsRefreshSec` | `10` | CPU/RAM sample cadence while the popup is open. Not sampled at all while closed. |
-| `stopTimeoutSec` | `10` | Seconds docker may spend on a clean shutdown before it kills the container. |
+| `stopTimeoutSec` | `10` | Seconds docker may spend on a clean shutdown before it kills the container. Also used for project stop/restart. |
+| `groupByProject` | `true` | Group containers under their compose project. Off lists every container on its own. |
 
 ## Requirements
 
 - [Omarchy](https://omarchy.org/) with `omarchy-shell` (the Quickshell bar).
-- `docker`, with your user already able to run it without sudo. That
+- `docker` with the compose plugin (`docker compose`) for project actions,
+  with your user already able to run it without sudo. That
   usually means membership in the `docker` group:
   `sudo usermod -aG docker $USER`, then a full log out and back in (a plain
   `newgrp` in one terminal isn't enough — `omarchy-shell` keeps the group
