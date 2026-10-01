@@ -22,7 +22,8 @@
 # `group start|stop|restart <project> [timeout]` acts on a whole compose
 # project through `docker compose -p`. `group files <project>` prints the
 # compose files the project was brought up with, one per line; `group edit
-# <project>` opens them in the user's editor.
+# <project>` opens them in the user's editor, and `group folder <project>`
+# opens the directory holding the first of them in the file manager.
 #
 # Every read is capped before it is parsed, so a host with a pathological
 # number of containers (or one pathological name) cannot grow this
@@ -199,11 +200,12 @@ cmd_group() {
   # compose's own rule for a project name; anything else never came from it
   [[ $project =~ ^[a-z0-9][a-z0-9_-]*$ ]] || die "no-project"
 
-  # Reading and opening the compose files needs neither compose nor a
-  # working directory.
+  # Reading and opening the compose files, or the folder they are in, needs
+  # neither compose nor a working directory.
   case "$action" in
     files) cmd_group_files "$project"; return ;;
     edit) cmd_group_edit "$project"; return ;;
+    folder) cmd_group_folder "$project"; return ;;
   esac
 
   docker compose version >/dev/null 2>&1 || die "compose-missing"
@@ -273,6 +275,31 @@ cmd_group_edit() {
   else
     die "editor-missing"
   fi
+  disown
+}
+
+# The folder the project's compose file is in — the first file `group files`
+# finds, so the base compose.yaml rather than an overlay passed after it —
+# opened in the file manager. It is the project's own directory in the
+# usual layout, whatever directory `up` was run from.
+cmd_group_folder() {
+  local project=$1 out
+  out=$(cmd_group_files "$project") || exit 1
+
+  local folder
+  folder=$(dirname -- "$(head -n 1 <<<"$out")")
+
+  local launch
+  if command -v nautilus >/dev/null 2>&1; then
+    launch=(nautilus --new-window "$folder")
+  elif command -v xdg-open >/dev/null 2>&1; then
+    launch=(xdg-open "$folder")
+  else
+    die "file-manager-missing"
+  fi
+  # the same app scope Omarchy's own Files launcher starts it in
+  command -v uwsm-app >/dev/null 2>&1 && launch=(uwsm-app -- "${launch[@]}")
+  setsid "${launch[@]}" >/dev/null 2>&1 &
   disown
 }
 

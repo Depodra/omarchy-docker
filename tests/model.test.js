@@ -215,6 +215,7 @@ assert.strictEqual(Model.errorText("not-removable:running"), "Stop the container
 assert.strictEqual(Model.errorText("compose-file-missing"), "The project's compose file no longer exists")
 assert.strictEqual(Model.errorText("editor-missing"), "No editor launcher found")
 assert.strictEqual(Model.errorText("group-edit-failed"), "Could not open the compose file")
+assert.strictEqual(Model.errorText("file-manager-missing"), "No file manager found")
 assert.strictEqual(Model.errorText("not-removable:paused"), "Unpause the container before removing it")
 assert.strictEqual(Model.errorText("not-removable:restarting"), "The container is restarting — stop it first")
 assert.strictEqual(Model.errorText("not-removable:weird"), "Docker will not remove a container in state \"weird\"")
@@ -272,19 +273,20 @@ assert.strictEqual(Model.groupIndexOf(expandedItems, "shop"), 1)
 assert.strictEqual(Model.groupIndexOf(expandedItems, "nope"), -1)
 
 // A group offers what its members would in aggregate: Start while anything
-// could start, Restart and Stop while anything is up — after Edit, which
-// any project offers whatever its state, so the lifecycle buttons keep
-// their places at the end of the row.
+// could start, Restart and Stop while anything is up — after Edit and
+// Folder, which any project offers whatever its state, so the lifecycle
+// buttons keep their places at the end of the row.
 const groupIds = rowsIn => Model.groupActions(rowsIn).map(a => a.id)
-assert.deepStrictEqual(groupIds([{ state: "running" }, { state: "running" }]), ["edit", "restart", "stop"])
-assert.deepStrictEqual(groupIds([{ state: "exited" }, { state: "created" }]), ["edit", "start"])
-assert.deepStrictEqual(groupIds([{ state: "running" }, { state: "exited" }]), ["edit", "start", "restart", "stop"])
-assert.deepStrictEqual(groupIds([{ state: "paused" }]), ["edit", "restart", "stop"])
+assert.deepStrictEqual(groupIds([{ state: "running" }, { state: "running" }]), ["edit", "folder", "restart", "stop"])
+assert.deepStrictEqual(groupIds([{ state: "exited" }, { state: "created" }]), ["edit", "folder", "start"])
+assert.deepStrictEqual(groupIds([{ state: "running" }, { state: "exited" }]), ["edit", "folder", "start", "restart", "stop"])
+assert.deepStrictEqual(groupIds([{ state: "paused" }]), ["edit", "folder", "restart", "stop"])
 // Nothing in a group of dead containers can be started or stopped, but its
-// compose file can still be opened.
-assert.deepStrictEqual(groupIds([{ state: "dead" }]), ["edit"])
+// compose file and folder can still be opened.
+assert.deepStrictEqual(groupIds([{ state: "dead" }]), ["edit", "folder"])
 assert.deepStrictEqual(groupIds([]), [])
 assert.strictEqual(Model.groupActions([{ state: "running" }])[0].icon, Model.GLYPH.edit)
+assert.strictEqual(Model.groupActions([{ state: "running" }])[1].icon, Model.GLYPH.folder)
 
 // A group's CPU/RAM is the sum of its members' — the same single-core
 // relative CPU figure each row shows, so the header reads as their total.

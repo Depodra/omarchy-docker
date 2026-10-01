@@ -14,8 +14,9 @@ popup, the docker commands you'd otherwise be typing by hand.
 
 - **Grouped by compose project.** Containers collapse under the compose
   project that created them, each header showing the project's state and
-  combined CPU/RAM, with Start, Restart and Stop for the whole project and
-  an Edit button that opens its compose files in your editor. Expand a
+  combined CPU/RAM, with Start, Restart and Stop for the whole project, an
+  Edit button that opens its compose files in your editor, and a Folder
+  button that opens their directory in Files. Expand a
   project for the same per-container controls as before.
 - **A list you can act on without a second click.** Stop and Restart (or
   Start) sit right on the row. Removing is behind a confirmation that starts
@@ -76,6 +77,7 @@ A project header shows a summary of its containers' states
 | **↻ button** | Restart all — `docker compose -p <project> restart`, shown while anything is up |
 | **■ button** | Stop all — `docker compose -p <project> stop`, shown while anything is up |
 | **✎ button** | Edit — open the project's compose files in your default editor |
+| **📁 button** | Folder — open the directory the project's compose file is in, in Files |
 | **Click the header** | expand or collapse the project |
 
 These act on the containers the project already has, found by label, so
@@ -92,6 +94,12 @@ up — the `com.docker.compose.project.config_files` label, so a base
 Omarchy's default editor (`omarchy-launch-editor`, falling back to
 `xdg-open`). Only absolute paths to files that still exist are opened; if
 none are left, the panel says so instead.
+
+Folder opens the directory the first of those files is in — the base
+compose file, not an overlay — in Files (Nautilus, else whatever
+`xdg-open` picks). It's the project's folder on this machine, opened as
+you: the containers' own filesystems and named volumes live under
+`/var/lib/docker`, which only root can read, so use a shell for those.
 
 ## The container list
 
@@ -154,6 +162,7 @@ the container over the same volume gets it back.
 | `u` | up: start the selected project or container |
 | `d` | down: stop the selected project or container |
 | `e` | edit the compose files of the selected project, or of the selected container's project |
+| `f` | open the folder of the selected project, or of the selected container's project |
 | `x` | ask to remove the selected container |
 | `L` | view its logs |
 | `p` | pause or resume it |
@@ -177,6 +186,7 @@ omarchy-shell io.github.majkelll.omarchy-docker start|stop|restart <name>
 omarchy-shell io.github.majkelll.omarchy-docker pause|unpause|kill <name>
 omarchy-shell io.github.majkelll.omarchy-docker startGroup|stopGroup|restartGroup <project>
 omarchy-shell io.github.majkelll.omarchy-docker editGroup <project>    # opens its compose files in your editor
+omarchy-shell io.github.majkelll.omarchy-docker openGroupFolder <project>  # opens their folder in Files
 omarchy-shell io.github.majkelll.omarchy-docker remove <name>       # opens the popup and asks — never deletes outright
 omarchy-shell io.github.majkelll.omarchy-docker logs <name>         # opens a terminal with the container's logs
 omarchy-shell io.github.majkelll.omarchy-docker shell <name>        # opens a terminal shell in the container

@@ -26,6 +26,7 @@ var GLYPH = {
   kill: "󰚌",
   web: "󰖟",
   edit: "󰏫",
+  folder: "󰉋",
   collapsed: "󰅂",
   expanded: "󰅀"
 }
@@ -398,9 +399,10 @@ function groupIndexOf(items, key) {
 // A group's own buttons are what its members would offer in aggregate:
 // Start while anything in it could start, Restart and Stop while anything in
 // it is up. `compose start` only touches what is stopped and `compose stop`
-// only what is up, so a half-up project offers all three. Edit opens the
-// project's compose files whatever state it is in, and comes first so the
-// lifecycle buttons keep their places at the end of the row.
+// only what is up, so a half-up project offers all three. Edit and Folder
+// open the project's compose files and the folder they are in, whatever
+// state it is in, and come first so the lifecycle buttons keep their places
+// at the end of the row.
 function groupActions(rows) {
   var list = Array.isArray(rows) ? rows : []
   var canStart = false
@@ -411,7 +413,10 @@ function groupActions(rows) {
     if (rules.stopRestart) anyUp = true
   }
   var actions = []
-  if (list.length > 0) actions.push({ id: "edit", icon: GLYPH.edit, tooltip: "Edit compose file", urgent: false })
+  if (list.length > 0) {
+    actions.push({ id: "edit", icon: GLYPH.edit, tooltip: "Edit compose file", urgent: false })
+    actions.push({ id: "folder", icon: GLYPH.folder, tooltip: "Open project folder", urgent: false })
+  }
   if (canStart) actions.push({ id: "start", icon: GLYPH.start, tooltip: "Start all", urgent: false })
   if (anyUp) {
     actions.push({ id: "restart", icon: GLYPH.restart, tooltip: "Restart all", urgent: false })
@@ -512,6 +517,8 @@ function errorText(code) {
     case "group-restart-failed": return "Could not restart the project"
     case "compose-file-missing": return "The project's compose file no longer exists"
     case "editor-missing": return "No editor launcher found"
+    case "file-manager-missing": return "No file manager found"
+    case "group-folder-failed": return "Could not open the project folder"
     case "group-edit-failed": return "Could not open the compose file"
     case "unknown-command": return "Internal error: unknown command"
     case "unknown-action": return "Internal error: unknown action"

@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.majkelll.omarchy-docker",
   "name": "Docker",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "author": "Majkelll",
   "license": "MIT",
-  "description": "Everything you need for Docker in the bar, and nothing you don't: start, stop, restart, pause and remove containers, grouped by compose project with whole-project start/stop/restart and a one-click edit of the compose files, view logs or open a shell, and watch live CPU/RAM per container and in total. No privileges asked for, nothing written to disk.",
+  "description": "Everything you need for Docker in the bar, and nothing you don't: start, stop, restart, pause and remove containers, grouped by compose project with whole-project start/stop/restart and a one-click edit of the compose files or their folder in Files, view logs or open a shell, and watch live CPU/RAM per container and in total. No privileges asked for, nothing written to disk.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Docker",
-    "description": "Container list grouped by compose project, with start/stop/restart per project or per container, compose-file editing, logs, shell, and live CPU/RAM.",
+    "description": "Container list grouped by compose project, with start/stop/restart per project or per container, compose-file and project-folder opening, logs, shell, and live CPU/RAM.",
     "category": "System",
     "aliases": [
       "docker",

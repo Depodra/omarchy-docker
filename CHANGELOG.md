@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0 - 2026-10-01
+
+- Folder button on every compose project header, next to Edit: opens the
+  directory the project's compose file is in — the first file in the
+  `com.docker.compose.project.config_files` label, so the base file rather
+  than an overlay — in Files (Nautilus, else `xdg-open`). A project whose
+  compose file is gone says so in the panel.
+- Keyboard: `f` opens the folder of the selected project, or of the selected
+  container's project.
+- IPC: `openGroupFolder <project>`. Helper: `group folder <project>`.
+
 ## 1.2.0 - 2026-10-01
 
 - Edit button on every compose project header: opens the project's compose

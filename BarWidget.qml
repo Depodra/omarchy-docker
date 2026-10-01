@@ -129,15 +129,20 @@ BarWidget {
     return "ok"
   }
 
-  // Changes nothing in docker, so it takes no part in the busy slot — but
-  // unlike logs/shell it is not fire-and-forget: a project whose compose
-  // file has since gone should say so in the panel, not fail silently.
-  function editGroup(project) {
-    if (editProc.running) return "busy"
-    editProc.command = [root.ctlPath, "group", "edit", project]
-    editProc.running = true
+  // Opening an editor or a file manager changes nothing in docker, so it
+  // takes no part in the busy slot — but unlike logs/shell it is not
+  // fire-and-forget: a compose file or folder that has since gone should say
+  // so in the panel, not fail silently.
+  function launch(args, fallback) {
+    if (launchProc.running) return "busy"
+    launchProc.fallback = fallback
+    launchProc.command = [root.ctlPath].concat(args)
+    launchProc.running = true
     return "ok"
   }
+
+  function editGroup(project) { return root.launch(["group", "edit", project], "group-edit-failed") }
+  function openGroupFolder(project) { return root.launch(["group", "folder", project], "group-folder-failed") }
 
   function startGroup(project) { return root.runGroupAction("start", project) }
   function stopGroup(project) { return root.runGroupAction("stop", project) }
@@ -252,13 +257,14 @@ BarWidget {
   }
 
   Process {
-    id: editProc
+    id: launchProc
+    property string fallback: ""
     property string stderrText: ""
     stdout: StdioCollector { waitForEnd: true }
-    stderr: StdioCollector { waitForEnd: true; onStreamFinished: editProc.stderrText = text }
+    stderr: StdioCollector { waitForEnd: true; onStreamFinished: launchProc.stderrText = text }
     onExited: function(code) {
-      root.actionError = code === 0 ? "" : (Model.clean(editProc.stderrText) || "group-edit-failed")
-      editProc.stderrText = ""
+      root.actionError = code === 0 ? "" : (Model.clean(launchProc.stderrText) || launchProc.fallback)
+      launchProc.stderrText = ""
       root.injectPanel()
     }
   }
@@ -300,6 +306,8 @@ BarWidget {
     function restartGroup(project: string): string { return root.restartGroup(project) }
     // Opens the project's compose files in the default editor.
     function editGroup(project: string): string { return root.editGroup(project) }
+    // Opens the folder the project's compose file is in, in the file manager.
+    function openGroupFolder(project: string): string { return root.openGroupFolder(project) }
     // Never removes outright — puts the confirmation dialog on screen, same
     // as a click on the row's own Remove button.
     function remove(name: string): void { root.requestRemove(name) }

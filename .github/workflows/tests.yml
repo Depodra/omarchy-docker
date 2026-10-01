@@ -88,11 +88,22 @@ jobs:
           docker create --name odc-stale --label com.docker.compose.project=odc-stale \
             --label com.docker.compose.project.config_files=/nonexistent/compose.yaml,relative.yaml alpine:latest true
           [[ $(./bin/omarchy-docker-ctl group files odc-stale 2>&1) == "compose-file-missing" ]]
+          [[ $(./bin/omarchy-docker-ctl group folder odc-stale 2>&1) == "compose-file-missing" ]]
           docker rm odc-stale
+
+          # the folder button opens the compose file's directory; a stand-in
+          # nautilus records what it was asked to open
+          fake=$(mktemp -d)
+          printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "%s/opened"\n' "$fake" > "$fake/nautilus"
+          chmod +x "$fake/nautilus"
+          PATH="$fake:$PATH" ./bin/omarchy-docker-ctl group folder odc-ci
+          for _ in 1 2 3 4 5 6 7 8 9 10; do [[ -s $fake/opened ]] && break; sleep 0.5; done
+          [[ $(cat "$fake/opened") == "--new-window"$'\n'"$proj" ]]
 
           # a name compose itself would never produce is refused before compose runs
           [[ $(./bin/omarchy-docker-ctl group stop 'Bad;name' 2>&1) == "no-project" ]]
           [[ $(./bin/omarchy-docker-ctl group files 'Bad;name' 2>&1) == "no-project" ]]
+          [[ $(./bin/omarchy-docker-ctl group folder 'Bad;name' 2>&1) == "no-project" ]]
           if ./bin/omarchy-docker-ctl group start odc-missing 2>/dev/null; then
             echo "expected start of a nonexistent project to fail" >&2
             exit 1

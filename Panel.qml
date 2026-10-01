@@ -165,6 +165,7 @@ Panel {
     for (var i = 0; i < offered.length; i++) {
       if (offered[i].id !== id) continue
       if (id === "edit") root.hostWidget.editGroup(key)
+      else if (id === "folder") root.hostWidget.openGroupFolder(key)
       else if (id === "start") root.hostWidget.startGroup(key)
       else if (id === "stop") root.hostWidget.stopGroup(key)
       else if (id === "restart") root.hostWidget.restartGroup(key)
@@ -260,14 +261,23 @@ Panel {
     else if (!up && rules.stopRestart) root.hostWidget.stop(item.row.name)
   }
 
-  // e: the compose files of whatever project the cursor is in — its header,
-  // or any container that belongs to one (with grouping off too, since the
-  // row still knows its project).
-  function editSelected() {
+  // e / f: the compose files, or their folder, of whatever project the
+  // cursor is in — its header, or any container that belongs to one (with
+  // grouping off too, since the row still knows its project).
+  function selectedProject() {
     var item = root.selectedItem()
-    if (!item || !root.hostWidget) return
-    var key = item.kind === "group" ? item.key : item.row.project
-    if (key !== "") root.hostWidget.editGroup(key)
+    if (!item) return ""
+    return item.kind === "group" ? item.key : item.row.project
+  }
+
+  function editSelected() {
+    var key = root.selectedProject()
+    if (key !== "" && root.hostWidget) root.hostWidget.editGroup(key)
+  }
+
+  function openSelectedFolder() {
+    var key = root.selectedProject()
+    if (key !== "" && root.hostWidget) root.hostWidget.openGroupFolder(key)
   }
 
   function removeSelected() {
@@ -418,6 +428,7 @@ Panel {
         if (text === "u" || text === "U") { root.upDownSelected(true); return }
         if (text === "d" || text === "D") { root.upDownSelected(false); return }
         if (text === "e" || text === "E") { root.editSelected(); return }
+        if (text === "f" || text === "F") { root.openSelectedFolder(); return }
         var row = root.selectedRow()
         if (!row || !root.hostWidget) return
         if (text === "l" || text === "L") {
@@ -813,8 +824,8 @@ Panel {
 
           Text {
             text: root.groupByProject
-              ? "Enter/→ open · ← close · u up · d down · e edit compose · x remove · L logs · p pause/resume · K kill · o open port · r refresh · Esc close"
-              : "Enter details · u up · d down · e edit compose · x remove · L logs · p pause/resume · K kill · o open port · r refresh · Esc close"
+              ? "Enter/→ open · ← close · u up · d down · e edit compose · f project folder · x remove · L logs · p pause/resume · K kill · o open port · r refresh · Esc close"
+              : "Enter details · u up · d down · e edit compose · f project folder · x remove · L logs · p pause/resume · K kill · o open port · r refresh · Esc close"
             color: root.faint
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
