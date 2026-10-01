@@ -22,6 +22,8 @@ Panel {
   property string actionError: ""
   property string busyAction: ""
   property string busyName: ""
+  property string busyGroup: ""
+  property bool groupByProject: true
   property string pendingRemove: ""
 
   readonly property var totals: Model.totalStats(root.stats, root.statsNproc, root.statsMemTotalBytes)
@@ -36,6 +38,24 @@ Panel {
   // block hangs under the same offset so it lines up under the name.
   readonly property real dotColumn: Style.space(18)
   readonly property real detailIndent: Style.spacing.rowPaddingX + dotColumn
+  // A group's members sit one dot column in from its header, so their dots
+  // line up under the project name.
+  readonly property real groupIndent: dotColumn
+
+  // Which compose projects are open. Kept across the popup closing — the
+  // stack you were looking at is usually the one you come back for — but
+  // never written anywhere, like the rest of the panel's state.
+  property var expandedGroups: ({})
+
+  // What the cursor walks: group headers, and the containers of every open
+  // group (or every container, with grouping off).
+  readonly property var items: Model.buildItems(root.rows, root.groupByProject, root.expandedGroups)
+
+  // Stands in for a container on a delegate that is drawing a group header,
+  // so the container block's bindings never read through null.
+  readonly property var noRow: ({ name: "", image: "", state: "", status: "", project: "",
+    health: "", restarts: 0, ports: [], running: false, active: false })
+  readonly property var noItem: ({ kind: "container", row: root.noRow, group: "", depth: 0 })
 
   // A row is expanded or it isn't; opening one never fights the confirm
   // dialog for the keyboard, since the dialog blocks the row cursor outright
@@ -50,6 +70,12 @@ Panel {
   function colorForRow(row) {
     if (Model.needsAttention(row)) return Color.urgent
     if (row.running) return Color.accent
+    return root.faint
+  }
+
+  function colorForGroup(rows) {
+    if (Model.attentionCount(rows) > 0) return Color.urgent
+    for (var i = 0; i < rows.length; i++) if (rows[i].running) return Color.accent
     return root.faint
   }
 
@@ -107,6 +133,18 @@ Panel {
     root.expandedName = root.expandedName === name ? "" : name
   }
 
+  function setGroupExpanded(key, open) {
+    // project names are labels anyone can set — no prototype to collide with
+    var next = Object.create(null)
+    for (var k in root.expandedGroups) if (k !== key) next[k] = root.expandedGroups[k]
+    if (open) next[key] = true
+    root.expandedGroups = next
+  }
+
+  function toggleGroup(key) {
+    root.setGroupExpanded(key, root.expandedGroups[key] !== true)
+  }
+
   function refresh() {
     if (root.hostWidget) root.hostWidget.refreshList()
   }
@@ -119,6 +157,20 @@ Panel {
     if (id === "restart") { root.hostWidget.restart(name); return }
   }
 
+  // Only what Model.groupActions offered for the group's current state, so
+  // a key press can never ask compose for something the buttons would not.
+  function groupAction(id, key, rows) {
+    if (!root.hostWidget) return
+    var offered = Model.groupActions(rows)
+    for (var i = 0; i < offered.length; i++) {
+      if (offered[i].id !== id) continue
+      if (id === "start") root.hostWidget.startGroup(key)
+      else if (id === "stop") root.hostWidget.stopGroup(key)
+      else if (id === "restart") root.hostWidget.restartGroup(key)
+      return
+    }
+  }
+
   function menuAction(item, name) {
     if (!root.hostWidget) return
     if (item.id === "logs") { root.hostWidget.openLogs(name); return }
@@ -129,16 +181,24 @@ Panel {
     if (item.id === "open") { root.hostWidget.openPort(name, item.arg); return }
   }
 
-  function isBusy(name) {
-    return root.busyAction !== "" && root.busyName === name
+  // A container is busy for its own action, or for one on its whole project.
+  function isBusy(row) {
+    if (root.busyAction === "") return false
+    if (root.busyName !== "" && root.busyName === row.name) return true
+    return root.busyGroup !== "" && row.project === root.busyGroup
+  }
+
+  function isGroupBusy(key) {
+    return root.busyAction !== "" && root.busyGroup === key
   }
 
   // A row can vanish from under an open block — containers come and go, and
   // the panel would otherwise keep an expandedName nothing renders.
   onRowsChanged: {
     if (root.expandedName !== "" && !Model.findRow(root.rows, root.expandedName)) root.expandedName = ""
-    root.selectedIndex = Model.clampIndex(root.selectedIndex, root.rows.length)
   }
+
+  onItemsChanged: root.selectedIndex = Model.clampIndex(root.selectedIndex, root.items.length)
 
   // ----------------------------------------------------------------- cursor
 
@@ -146,20 +206,57 @@ Panel {
   function takeCursor(index) { root.cursorActive = true; root.selectedIndex = index }
 
   function moveCursor(delta) {
-    if (root.rows.length === 0) return
+    var count = root.items.length
+    if (count === 0) return
     var at = root.cursorActive ? root.selectedIndex : (delta > 0 ? -1 : 0)
-    var next = ((at + delta) % root.rows.length + root.rows.length) % root.rows.length
+    var next = ((at + delta) % count + count) % count
     root.takeCursor(next)
   }
 
-  function selectedRow() {
+  // Left and right walk the tree the way a file tree does: right opens a
+  // closed group, left closes an open one or climbs from a container to its
+  // group's header. Anywhere else they move the cursor, as they always did.
+  function moveHorizontal(delta) {
+    var item = root.selectedItem()
+    if (item && item.kind === "group") {
+      if (delta > 0 && !item.expanded) { root.setGroupExpanded(item.key, true); return }
+      if (delta < 0 && item.expanded) { root.setGroupExpanded(item.key, false); return }
+    } else if (item && delta < 0 && item.group !== "") {
+      var header = Model.groupIndexOf(root.items, item.group)
+      if (header >= 0) { root.takeCursor(header); return }
+    }
+    root.moveCursor(delta)
+  }
+
+  function selectedItem() {
     if (!root.cursorActive) return null
-    return root.rows[root.selectedIndex] || null
+    return root.items[root.selectedIndex] || null
+  }
+
+  function selectedRow() {
+    var item = root.selectedItem()
+    return item && item.kind === "container" ? item.row : null
   }
 
   function activateCursor() {
-    var row = root.selectedRow()
-    if (row) root.toggleExpanded(row.name)
+    var item = root.selectedItem()
+    if (!item) return
+    if (item.kind === "group") root.toggleGroup(item.key)
+    else root.toggleExpanded(item.row.name)
+  }
+
+  // u / d: up and down for whatever the cursor is on — the whole project on
+  // a group header, the one container anywhere else.
+  function upDownSelected(up) {
+    var item = root.selectedItem()
+    if (!item || !root.hostWidget) return
+    if (item.kind === "group") {
+      root.groupAction(up ? "start" : "stop", item.key, item.rows)
+      return
+    }
+    var rules = Model.stateRules(item.row.state)
+    if (up && rules.start) root.hostWidget.start(item.row.name)
+    else if (!up && rules.stopRestart) root.hostWidget.stop(item.row.name)
   }
 
   function removeSelected() {
@@ -300,13 +397,15 @@ Panel {
       id: keyCatcher
       anchors.fill: parent
       blocked: root.confirmOpened
-      onMoveRequested: function(dx, dy) { root.moveCursor(dx !== 0 ? dx : dy) }
+      onMoveRequested: function(dx, dy) { if (dx !== 0) root.moveHorizontal(dx); else root.moveCursor(dy) }
       onActivateRequested: root.activateCursor()
       onDeleteRequested: root.removeSelected()
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(text) {
         if (text === "r" || text === "R") { root.refresh(); return }
+        if (text === "u" || text === "U") { root.upDownSelected(true); return }
+        if (text === "d" || text === "D") { root.upDownSelected(false); return }
         var row = root.selectedRow()
         if (!row || !root.hostWidget) return
         if (text === "l" || text === "L") {
@@ -435,28 +534,131 @@ Panel {
             spacing: Style.spacing.sm
 
             Repeater {
-              model: root.rows
+              model: root.items
 
+              // One delegate draws either a group header or a container row;
+              // the other half stays hidden, and a hidden item takes no room
+              // in a Column.
               delegate: Column {
                 id: rowEntry
-                required property var modelData
                 required property int index
 
-                readonly property bool expanded: root.expandedName === modelData.name
-                readonly property bool busy: root.isBusy(modelData.name)
-                readonly property var stat: root.stats[modelData.name]
+                // Read back out of root.items rather than off modelData:
+                // the Repeater hands modelData over as a QVariant copy, whose
+                // nested arrays come back as sequence wrappers that
+                // Array.isArray — and so every Model.js helper — reads as
+                // empty.
+                readonly property var entry: root.items[index] || root.noItem
+                readonly property bool isGroup: entry.kind === "group"
+                readonly property var row: isGroup ? root.noRow : entry.row
+                readonly property string groupKey: isGroup ? entry.key : ""
+                readonly property var groupRows: isGroup ? entry.rows : []
+                readonly property real indent: entry.depth * root.groupIndent
+
+                readonly property bool expanded: !isGroup && root.expandedName === row.name
+                readonly property bool busy: isGroup ? root.isGroupBusy(groupKey) : root.isBusy(row)
+                readonly property var stat: isGroup ? undefined : root.stats[row.name]
 
                 width: parent.width
                 spacing: Style.spacing.sm
 
                 onExpandedChanged: if (expanded) Qt.callLater(function() { scrollArea.ensureVisible(rowEntry) })
 
+                // ---------------------------------------------- group header
+                PanelRow {
+                  id: groupRow
+                  visible: rowEntry.isGroup
+                  rowIndex: rowEntry.index
+                  implicitHeight: groupContent.implicitHeight + Style.spacing.xl
+                  onActivated: root.toggleGroup(rowEntry.groupKey)
+
+                  Item {
+                    id: groupContent
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.leftMargin: Style.spacing.rowPaddingX
+                    anchors.rightMargin: Style.spacing.rowPaddingX
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitHeight: groupLabels.implicitHeight
+
+                    Text {
+                      id: chevron
+                      text: rowEntry.isGroup && rowEntry.entry.expanded ? Model.GLYPH.expanded : Model.GLYPH.collapsed
+                      color: root.colorForGroup(rowEntry.groupRows)
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      anchors.left: parent.left
+                      anchors.top: groupLabels.top
+                      anchors.topMargin: Math.max(0, Math.round((groupTitle.implicitHeight - implicitHeight) / 2))
+                      width: root.dotColumn
+                    }
+
+                    Column {
+                      id: groupLabels
+                      anchors.left: chevron.right
+                      anchors.right: groupActionRow.left
+                      anchors.rightMargin: Style.spacing.lg
+                      anchors.verticalCenter: parent.verticalCenter
+                      spacing: Style.spacing.xxs
+
+                      Text {
+                        id: groupTitle
+                        width: parent.width
+                        text: rowEntry.groupKey
+                        color: root.foreground
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.body
+                        font.bold: true
+                        elide: Text.ElideRight
+                      }
+
+                      Text {
+                        width: parent.width
+                        readonly property string statLine: Model.groupStatLine(rowEntry.groupRows, root.stats)
+                        text: rowEntry.busy
+                          ? Model.busyLabel(root.busyAction)
+                          : Model.summary(rowEntry.groupRows) + (statLine !== "" ? " · " + statLine : "")
+                        color: Model.attentionCount(rowEntry.groupRows) > 0 ? Color.urgent : root.faint
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.caption
+                        elide: Text.ElideRight
+                      }
+                    }
+
+                    Row {
+                      id: groupActionRow
+                      anchors.right: parent.right
+                      anchors.verticalCenter: parent.verticalCenter
+                      spacing: Style.spacing.xs
+                      visible: !rowEntry.busy
+
+                      Repeater {
+                        model: Model.groupActions(rowEntry.groupRows)
+
+                        delegate: PanelActionButton {
+                          required property var modelData
+                          iconText: modelData.icon
+                          tooltipText: modelData.tooltip
+                          foreground: root.foreground
+                          hoverColor: modelData.urgent ? Color.urgent : Color.accent
+                          fontFamily: root.fontFamily
+                          onClicked: root.groupAction(modelData.id, rowEntry.groupKey, rowEntry.groupRows)
+                        }
+                      }
+                    }
+                  }
+                }
+
+                // -------------------------------------------- container row
                 PanelRow {
                   id: containerRow
+                  visible: !rowEntry.isGroup
+                  x: rowEntry.indent
+                  width: rowEntry.width - rowEntry.indent
                   rowIndex: rowEntry.index
                   activeRow: rowEntry.expanded
                   implicitHeight: rowContent.implicitHeight + Style.spacing.xl
-                  onActivated: root.toggleExpanded(rowEntry.modelData.name)
+                  onActivated: root.toggleExpanded(rowEntry.row.name)
 
                   Item {
                     id: rowContent
@@ -470,7 +672,7 @@ Panel {
                     Text {
                       id: dot
                       text: rowEntry.expanded ? "󰅀" : "●"
-                      color: root.colorForRow(rowEntry.modelData)
+                      color: root.colorForRow(rowEntry.row)
                       font.family: root.fontFamily
                       font.pixelSize: rowEntry.expanded ? Style.font.caption : Style.font.bodySmall
                       anchors.left: parent.left
@@ -490,7 +692,7 @@ Panel {
                       Text {
                         id: titleText
                         width: parent.width
-                        text: rowEntry.modelData.name
+                        text: rowEntry.row.name
                         color: root.foreground
                         font.family: root.fontFamily
                         font.pixelSize: Style.font.body
@@ -504,8 +706,8 @@ Panel {
                         // restarts, and ports are for the expanded row.
                         text: rowEntry.busy
                           ? Model.busyLabel(root.busyAction)
-                          : (Model.statusText(rowEntry.modelData) + (Model.rowStatLine(rowEntry.modelData, rowEntry.stat) !== "" ? " · " + Model.rowStatLine(rowEntry.modelData, rowEntry.stat) : ""))
-                        color: Model.needsAttention(rowEntry.modelData) ? Color.urgent : root.faint
+                          : (Model.statusText(rowEntry.row) + (Model.rowStatLine(rowEntry.row, rowEntry.stat) !== "" ? " · " + Model.rowStatLine(rowEntry.row, rowEntry.stat) : ""))
+                        color: Model.needsAttention(rowEntry.row) ? Color.urgent : root.faint
                         font.family: root.fontFamily
                         font.pixelSize: Style.font.caption
                         elide: Text.ElideRight
@@ -520,7 +722,7 @@ Panel {
                       visible: !rowEntry.busy
 
                       Repeater {
-                        model: Model.rowActions(rowEntry.modelData)
+                        model: Model.rowActions(rowEntry.row)
 
                         delegate: PanelActionButton {
                           required property var modelData
@@ -529,7 +731,7 @@ Panel {
                           foreground: root.foreground
                           hoverColor: modelData.urgent ? Color.urgent : Color.accent
                           fontFamily: root.fontFamily
-                          onClicked: root.primaryAction(modelData.id, rowEntry.modelData.name)
+                          onClicked: root.primaryAction(modelData.id, rowEntry.row.name)
                         }
                       }
                     }
@@ -539,13 +741,13 @@ Panel {
                 // ------------------------------------------------ details
                 Column {
                   visible: rowEntry.expanded
-                  width: parent.width - root.detailIndent - Style.spacing.rowPaddingX
-                  x: root.detailIndent
+                  width: parent.width - root.detailIndent - Style.spacing.rowPaddingX - rowEntry.indent
+                  x: root.detailIndent + rowEntry.indent
                   spacing: Style.spacing.sm
 
                   Text {
                     width: parent.width
-                    text: rowEntry.modelData.image
+                    text: rowEntry.row.image
                     color: root.dim
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
@@ -555,8 +757,8 @@ Panel {
                   Text {
                     width: parent.width
                     visible: text !== ""
-                    text: Model.expandedMeta(rowEntry.modelData)
-                    color: Model.needsAttention(rowEntry.modelData) ? Color.urgent : root.dim
+                    text: Model.expandedMeta(rowEntry.row)
+                    color: Model.needsAttention(rowEntry.row) ? Color.urgent : root.dim
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
                     wrapMode: Text.WordWrap
@@ -565,8 +767,8 @@ Panel {
                   Text {
                     width: parent.width
                     visible: text !== ""
-                    text: rowEntry.modelData.ports.length > 0
-                      ? "Ports: " + rowEntry.modelData.ports.map(function(p) { return p.host + "→" + p.container }).join(", ")
+                    text: rowEntry.row.ports.length > 0
+                      ? "Ports: " + rowEntry.row.ports.map(function(p) { return p.host + "→" + p.container }).join(", ")
                       : ""
                     color: root.dim
                     font.family: root.fontFamily
@@ -579,7 +781,7 @@ Panel {
                     spacing: Style.spacing.xs
 
                     Repeater {
-                      model: Model.rowMenuActions(rowEntry.modelData)
+                      model: Model.rowMenuActions(rowEntry.row)
 
                       delegate: PanelActionButton {
                         required property var modelData
@@ -588,7 +790,7 @@ Panel {
                         foreground: root.foreground
                         hoverColor: modelData.urgent ? Color.urgent : Color.accent
                         fontFamily: root.fontFamily
-                        onClicked: root.menuAction(modelData, rowEntry.modelData.name)
+                        onClicked: root.menuAction(modelData, rowEntry.row.name)
                       }
                     }
                   }
@@ -598,7 +800,9 @@ Panel {
           }
 
           Text {
-            text: "Enter details · x remove · l logs · p pause/resume · k kill · o open port · r refresh · Esc close"
+            text: root.groupByProject
+              ? "Enter/→ open · ← close · u up · d down · x remove · L logs · p pause/resume · K kill · o open port · r refresh · Esc close"
+              : "Enter details · u up · d down · x remove · L logs · p pause/resume · K kill · o open port · r refresh · Esc close"
             color: root.faint
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption

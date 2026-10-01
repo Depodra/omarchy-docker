@@ -26,6 +26,9 @@ BarWidget {
   property string actionError: ""
   property string busyAction: ""
   property string busyName: ""
+  // The compose project a group action is running against; busyName stays
+  // empty for those, so a container and a project can never be confused.
+  property string busyGroup: ""
   // Set by the `remove` IPC call so a keybinding cannot skip the
   // confirmation a click on the row's Remove button already goes through —
   // the panel watches this and puts the dialog on screen itself.
@@ -37,6 +40,7 @@ BarWidget {
   readonly property int listRefreshSec: Math.max(2, Number(root.setting("listRefreshSec", 5)) || 5)
   readonly property int statsRefreshSec: Math.max(5, Number(root.setting("statsRefreshSec", 10)) || 10)
   readonly property int stopTimeoutSec: Math.max(1, Number(root.setting("stopTimeoutSec", 10)) || 10)
+  readonly property bool groupByProject: root.setting("groupByProject", true) !== false
 
   readonly property string tooltip: root.listError !== ""
     ? Model.errorText(root.listError)
@@ -47,7 +51,7 @@ BarWidget {
   // assumed present.
   readonly property var mirroredProperties: ["bar", "settings", "rows", "stats",
     "statsNproc", "statsMemTotalBytes", "listError", "actionError",
-    "busyAction", "busyName", "pendingRemove"]
+    "busyAction", "busyName", "busyGroup", "groupByProject", "pendingRemove"]
 
   function injectPanel() {
     var target = panelLoader.item
@@ -110,6 +114,24 @@ BarWidget {
     actionProc.running = true
     return "ok"
   }
+
+  // The same single in-flight slot as runAction: a group action and a
+  // container action never race each other either.
+  function runGroupAction(action, project) {
+    if (root.busyAction !== "") return "busy"
+    root.busyAction = action
+    root.busyGroup = project
+    root.injectPanel()
+    var args = [root.ctlPath, "group", action, project]
+    if (action !== "start") args.push(String(root.stopTimeoutSec))
+    actionProc.command = args
+    actionProc.running = true
+    return "ok"
+  }
+
+  function startGroup(project) { return root.runGroupAction("start", project) }
+  function stopGroup(project) { return root.runGroupAction("stop", project) }
+  function restartGroup(project) { return root.runGroupAction("restart", project) }
 
   function start(name) { return root.runAction("start", name) }
   function stop(name) { return root.runAction("stop", name, root.stopTimeoutSec) }
@@ -208,9 +230,11 @@ BarWidget {
     stdout: StdioCollector { waitForEnd: true }
     stderr: StdioCollector { waitForEnd: true; onStreamFinished: actionProc.stderrText = text }
     onExited: function(code) {
-      root.actionError = code === 0 ? "" : (Model.clean(actionProc.stderrText) || (root.busyAction + "-failed"))
+      var fallback = (root.busyGroup !== "" ? "group-" : "") + root.busyAction + "-failed"
+      root.actionError = code === 0 ? "" : (Model.clean(actionProc.stderrText) || fallback)
       root.busyAction = ""
       root.busyName = ""
+      root.busyGroup = ""
       actionProc.stderrText = ""
       root.injectPanel()
       root.refreshList()
@@ -248,6 +272,10 @@ BarWidget {
     function pause(name: string): string { return root.pauseContainer(name) }
     function unpause(name: string): string { return root.unpauseContainer(name) }
     function kill(name: string): string { return root.killContainer(name) }
+    // A whole compose project, by its com.docker.compose.project name.
+    function startGroup(project: string): string { return root.startGroup(project) }
+    function stopGroup(project: string): string { return root.stopGroup(project) }
+    function restartGroup(project: string): string { return root.restartGroup(project) }
     // Never removes outright — puts the confirmation dialog on screen, same
     // as a click on the row's own Remove button.
     function remove(name: string): void { root.requestRemove(name) }

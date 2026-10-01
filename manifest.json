@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.majkelll.omarchy-docker",
   "name": "Docker",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "author": "Majkelll",
   "license": "MIT",
-  "description": "Everything you need for Docker in the bar, and nothing you don't: start, stop, restart, pause and remove containers, view logs or open a shell, and watch live CPU/RAM per container and in total. No privileges asked for, nothing written to disk.",
+  "description": "Everything you need for Docker in the bar, and nothing you don't: start, stop, restart, pause and remove containers, grouped by compose project with whole-project start/stop/restart, view logs or open a shell, and watch live CPU/RAM per container and in total. No privileges asked for, nothing written to disk.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Docker",
-    "description": "Container list with start/stop/restart, logs, shell, and live CPU/RAM per container and in total.",
+    "description": "Container list grouped by compose project, with start/stop/restart per project or per container, logs, shell, and live CPU/RAM.",
     "category": "System",
     "aliases": [
       "docker",
@@ -25,9 +25,17 @@
     "defaults": {
       "listRefreshSec": 5,
       "statsRefreshSec": 10,
-      "stopTimeoutSec": 10
+      "stopTimeoutSec": 10,
+      "groupByProject": true
     },
     "schema": [
+      {
+        "key": "groupByProject",
+        "type": "boolean",
+        "label": "Group by compose project",
+        "defaultValue": true,
+        "description": "Collapse containers under their compose project, with start, stop and restart for the whole project. Off lists every container on its own, as before."
+      },
       {
         "key": "listRefreshSec",
         "type": "integer",
