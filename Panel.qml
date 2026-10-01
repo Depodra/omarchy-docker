@@ -164,7 +164,8 @@ Panel {
     var offered = Model.groupActions(rows)
     for (var i = 0; i < offered.length; i++) {
       if (offered[i].id !== id) continue
-      if (id === "start") root.hostWidget.startGroup(key)
+      if (id === "edit") root.hostWidget.editGroup(key)
+      else if (id === "start") root.hostWidget.startGroup(key)
       else if (id === "stop") root.hostWidget.stopGroup(key)
       else if (id === "restart") root.hostWidget.restartGroup(key)
       return
@@ -257,6 +258,16 @@ Panel {
     var rules = Model.stateRules(item.row.state)
     if (up && rules.start) root.hostWidget.start(item.row.name)
     else if (!up && rules.stopRestart) root.hostWidget.stop(item.row.name)
+  }
+
+  // e: the compose files of whatever project the cursor is in — its header,
+  // or any container that belongs to one (with grouping off too, since the
+  // row still knows its project).
+  function editSelected() {
+    var item = root.selectedItem()
+    if (!item || !root.hostWidget) return
+    var key = item.kind === "group" ? item.key : item.row.project
+    if (key !== "") root.hostWidget.editGroup(key)
   }
 
   function removeSelected() {
@@ -406,6 +417,7 @@ Panel {
         if (text === "r" || text === "R") { root.refresh(); return }
         if (text === "u" || text === "U") { root.upDownSelected(true); return }
         if (text === "d" || text === "D") { root.upDownSelected(false); return }
+        if (text === "e" || text === "E") { root.editSelected(); return }
         var row = root.selectedRow()
         if (!row || !root.hostWidget) return
         if (text === "l" || text === "L") {
@@ -801,8 +813,8 @@ Panel {
 
           Text {
             text: root.groupByProject
-              ? "Enter/→ open · ← close · u up · d down · x remove · L logs · p pause/resume · K kill · o open port · r refresh · Esc close"
-              : "Enter details · u up · d down · x remove · L logs · p pause/resume · K kill · o open port · r refresh · Esc close"
+              ? "Enter/→ open · ← close · u up · d down · e edit compose · x remove · L logs · p pause/resume · K kill · o open port · r refresh · Esc close"
+              : "Enter details · u up · d down · e edit compose · x remove · L logs · p pause/resume · K kill · o open port · r refresh · Esc close"
             color: root.faint
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption

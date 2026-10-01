@@ -20,7 +20,9 @@
 # bash has no floats.
 #
 # `group start|stop|restart <project> [timeout]` acts on a whole compose
-# project through `docker compose -p`.
+# project through `docker compose -p`. `group files <project>` prints the
+# compose files the project was brought up with, one per line; `group edit
+# <project>` opens them in the user's editor.
 #
 # Every read is capped before it is parsed, so a host with a pathological
 # number of containers (or one pathological name) cannot grow this
@@ -196,6 +198,14 @@ cmd_group() {
   require_docker
   # compose's own rule for a project name; anything else never came from it
   [[ $project =~ ^[a-z0-9][a-z0-9_-]*$ ]] || die "no-project"
+
+  # Reading and opening the compose files needs neither compose nor a
+  # working directory.
+  case "$action" in
+    files) cmd_group_files "$project"; return ;;
+    edit) cmd_group_edit "$project"; return ;;
+  esac
+
   docker compose version >/dev/null 2>&1 || die "compose-missing"
   cd / || die "group-${action}-failed"
 
@@ -212,6 +222,58 @@ cmd_group() {
       die "unknown-action"
       ;;
   esac
+}
+
+# The compose files a project was brought up with, as compose itself recorded
+# them: the com.docker.compose.project.config_files label, comma separated,
+# absolute. Every container of the project carries it, and a project
+# recreated with a different set of files can carry more than one, so the
+# files are collected across all of them, in first-seen order, once each.
+# A label is free-form text anyone can set, so only an absolute path to a
+# readable regular file survives — one that was deleted since, or a
+# throwaway overlay in /tmp that is gone, is dropped rather than opened.
+cmd_group_files() {
+  local project=$1
+  local raw
+  raw=$(docker ps -a --filter "label=com.docker.compose.project=${project}" \
+    --format '{{.Label "com.docker.compose.project.config_files"}}' 2>/dev/null \
+    | bounded_lines "$MAX_ROWS") || diagnose_unreachable
+
+  local line file parts=() files=()
+  declare -A seen=()
+  while IFS= read -r line; do
+    IFS=, read -ra parts <<<"$line"
+    for file in "${parts[@]}"; do
+      [[ $file == /* && -f $file && -r $file ]] || continue
+      [[ -n ${seen[$file]+set} ]] && continue
+      seen["$file"]=1
+      files+=("$file")
+    done
+  done <<<"$raw"
+
+  (( ${#files[@]} > 0 )) || die "compose-file-missing"
+  printf '%s\n' "${files[@]}"
+}
+
+# Every file from `group files`, opened together in Omarchy's default editor
+# (a base compose file and the overlays layered on it belong side by side).
+# The paths are arguments to the launcher, never shell text. The editor's
+# output goes nowhere: it outlives this call, and holding the caller's pipes
+# open would keep the panel waiting on a result that has already arrived.
+cmd_group_edit() {
+  local project=$1 out
+  out=$(cmd_group_files "$project") || exit 1
+
+  local files=()
+  mapfile -t files <<<"$out"
+  if command -v omarchy-launch-editor >/dev/null 2>&1; then
+    omarchy-launch-editor "${files[@]}" >/dev/null 2>&1 &
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "${files[0]}" >/dev/null 2>&1 &
+  else
+    die "editor-missing"
+  fi
+  disown
 }
 
 # Never forced: docker's own rule decides what may go, so nothing running,

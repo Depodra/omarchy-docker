@@ -14,8 +14,9 @@ popup, the docker commands you'd otherwise be typing by hand.
 
 - **Grouped by compose project.** Containers collapse under the compose
   project that created them, each header showing the project's state and
-  combined CPU/RAM, with Start, Restart and Stop for the whole project.
-  Expand a project for the same per-container controls as before.
+  combined CPU/RAM, with Start, Restart and Stop for the whole project and
+  an Edit button that opens its compose files in your editor. Expand a
+  project for the same per-container controls as before.
 - **A list you can act on without a second click.** Stop and Restart (or
   Start) sit right on the row. Removing is behind a confirmation that starts
   on Cancel, and only ever appears where docker will actually allow it —
@@ -74,6 +75,7 @@ A project header shows a summary of its containers' states
 | **▶ button** | Start all — `docker compose -p <project> start`, shown while anything in the project is stopped |
 | **↻ button** | Restart all — `docker compose -p <project> restart`, shown while anything is up |
 | **■ button** | Stop all — `docker compose -p <project> stop`, shown while anything is up |
+| **✎ button** | Edit — open the project's compose files in your default editor |
 | **Click the header** | expand or collapse the project |
 
 These act on the containers the project already has, found by label, so
@@ -83,6 +85,13 @@ not `up`/`down`. Compose still applies its own dependency order. The
 helper runs compose from `/` with `COMPOSE_FILE` cleared, so a compose file
 lying around in the shell's working directory can never stand in for the
 project.
+
+Edit opens the files compose itself recorded when the project was brought
+up — the `com.docker.compose.project.config_files` label, so a base
+`compose.yaml` and every overlay passed with `-f` open together — in
+Omarchy's default editor (`omarchy-launch-editor`, falling back to
+`xdg-open`). Only absolute paths to files that still exist are opened; if
+none are left, the panel says so instead.
 
 ## The container list
 
@@ -144,6 +153,7 @@ the container over the same volume gets it back.
 | `Enter` | expand the selected project or container |
 | `u` | up: start the selected project or container |
 | `d` | down: stop the selected project or container |
+| `e` | edit the compose files of the selected project, or of the selected container's project |
 | `x` | ask to remove the selected container |
 | `L` | view its logs |
 | `p` | pause or resume it |
@@ -166,6 +176,7 @@ omarchy-shell io.github.majkelll.omarchy-docker refresh             # refresh th
 omarchy-shell io.github.majkelll.omarchy-docker start|stop|restart <name>
 omarchy-shell io.github.majkelll.omarchy-docker pause|unpause|kill <name>
 omarchy-shell io.github.majkelll.omarchy-docker startGroup|stopGroup|restartGroup <project>
+omarchy-shell io.github.majkelll.omarchy-docker editGroup <project>    # opens its compose files in your editor
 omarchy-shell io.github.majkelll.omarchy-docker remove <name>       # opens the popup and asks — never deletes outright
 omarchy-shell io.github.majkelll.omarchy-docker logs <name>         # opens a terminal with the container's logs
 omarchy-shell io.github.majkelll.omarchy-docker shell <name>        # opens a terminal shell in the container
@@ -222,8 +233,11 @@ through Setup > Plugins.
 - **Removal is narrow by construction**: only `created`, `exited`, or `dead`
   containers, plain `docker rm`, behind a confirmation dialog that starts on
   Cancel.
+- **Edit only opens what compose recorded.** The compose-file label is
+  free-form text anyone can set, so only absolute paths to existing regular
+  files are passed to the editor — as arguments, never through a shell.
 - **Nothing is fetched at runtime.** No network calls, no telemetry — every
-  action is a local `docker` invocation or a terminal launch.
+  action is a local `docker` invocation, or a terminal or editor launch.
 
 ## Layout
 
@@ -241,12 +255,14 @@ something misbehaves — run it directly:
 ```bash
 ~/.config/omarchy/plugins/io.github.majkelll.omarchy-docker/bin/omarchy-docker-ctl list
 ~/.config/omarchy/plugins/io.github.majkelll.omarchy-docker/bin/omarchy-docker-ctl stats
+~/.config/omarchy/plugins/io.github.majkelll.omarchy-docker/bin/omarchy-docker-ctl group files <project>
 ```
 
 `list` prints one line per container (name, image, state, status, compose
 project, health, restart count, published ports); `stats` prints a leading
 metadata line (core count, total system RAM) followed by one line per
-running container.
+running container; `group files` prints the compose files the Edit button
+would open, one per line.
 
 ## Development
 

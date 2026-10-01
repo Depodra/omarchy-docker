@@ -82,8 +82,17 @@ jobs:
           [[ $(states) == "db=running web=running " ]]
           [[ -z $(docker ps -a --filter label=com.docker.compose.service=decoy -q) ]]
 
+          # the files behind the edit button: what compose recorded, and nothing else
+          [[ $(./bin/omarchy-docker-ctl group files odc-ci) == "$proj/compose.yaml" ]]
+          [[ $(./bin/omarchy-docker-ctl group files odc-missing 2>&1) == "compose-file-missing" ]]
+          docker create --name odc-stale --label com.docker.compose.project=odc-stale \
+            --label com.docker.compose.project.config_files=/nonexistent/compose.yaml,relative.yaml alpine:latest true
+          [[ $(./bin/omarchy-docker-ctl group files odc-stale 2>&1) == "compose-file-missing" ]]
+          docker rm odc-stale
+
           # a name compose itself would never produce is refused before compose runs
           [[ $(./bin/omarchy-docker-ctl group stop 'Bad;name' 2>&1) == "no-project" ]]
+          [[ $(./bin/omarchy-docker-ctl group files 'Bad;name' 2>&1) == "no-project" ]]
           if ./bin/omarchy-docker-ctl group start odc-missing 2>/dev/null; then
             echo "expected start of a nonexistent project to fail" >&2
             exit 1

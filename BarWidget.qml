@@ -129,6 +129,16 @@ BarWidget {
     return "ok"
   }
 
+  // Changes nothing in docker, so it takes no part in the busy slot — but
+  // unlike logs/shell it is not fire-and-forget: a project whose compose
+  // file has since gone should say so in the panel, not fail silently.
+  function editGroup(project) {
+    if (editProc.running) return "busy"
+    editProc.command = [root.ctlPath, "group", "edit", project]
+    editProc.running = true
+    return "ok"
+  }
+
   function startGroup(project) { return root.runGroupAction("start", project) }
   function stopGroup(project) { return root.runGroupAction("stop", project) }
   function restartGroup(project) { return root.runGroupAction("restart", project) }
@@ -241,6 +251,18 @@ BarWidget {
     }
   }
 
+  Process {
+    id: editProc
+    property string stderrText: ""
+    stdout: StdioCollector { waitForEnd: true }
+    stderr: StdioCollector { waitForEnd: true; onStreamFinished: editProc.stderrText = text }
+    onExited: function(code) {
+      root.actionError = code === 0 ? "" : (Model.clean(editProc.stderrText) || "group-edit-failed")
+      editProc.stderrText = ""
+      root.injectPanel()
+    }
+  }
+
   Loader {
     id: panelLoader
     active: true
@@ -276,6 +298,8 @@ BarWidget {
     function startGroup(project: string): string { return root.startGroup(project) }
     function stopGroup(project: string): string { return root.stopGroup(project) }
     function restartGroup(project: string): string { return root.restartGroup(project) }
+    // Opens the project's compose files in the default editor.
+    function editGroup(project: string): string { return root.editGroup(project) }
     // Never removes outright — puts the confirmation dialog on screen, same
     // as a click on the row's own Remove button.
     function remove(name: string): void { root.requestRemove(name) }

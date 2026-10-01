@@ -25,6 +25,7 @@ var GLYPH = {
   play: "󰐊",
   kill: "󰚌",
   web: "󰖟",
+  edit: "󰏫",
   collapsed: "󰅂",
   expanded: "󰅀"
 }
@@ -397,7 +398,9 @@ function groupIndexOf(items, key) {
 // A group's own buttons are what its members would offer in aggregate:
 // Start while anything in it could start, Restart and Stop while anything in
 // it is up. `compose start` only touches what is stopped and `compose stop`
-// only what is up, so a half-up project offers all three.
+// only what is up, so a half-up project offers all three. Edit opens the
+// project's compose files whatever state it is in, and comes first so the
+// lifecycle buttons keep their places at the end of the row.
 function groupActions(rows) {
   var list = Array.isArray(rows) ? rows : []
   var canStart = false
@@ -408,6 +411,7 @@ function groupActions(rows) {
     if (rules.stopRestart) anyUp = true
   }
   var actions = []
+  if (list.length > 0) actions.push({ id: "edit", icon: GLYPH.edit, tooltip: "Edit compose file", urgent: false })
   if (canStart) actions.push({ id: "start", icon: GLYPH.start, tooltip: "Start all", urgent: false })
   if (anyUp) {
     actions.push({ id: "restart", icon: GLYPH.restart, tooltip: "Restart all", urgent: false })
@@ -506,6 +510,9 @@ function errorText(code) {
     case "group-start-failed": return "Could not start the project"
     case "group-stop-failed": return "Could not stop the project"
     case "group-restart-failed": return "Could not restart the project"
+    case "compose-file-missing": return "The project's compose file no longer exists"
+    case "editor-missing": return "No editor launcher found"
+    case "group-edit-failed": return "Could not open the compose file"
     case "unknown-command": return "Internal error: unknown command"
     case "unknown-action": return "Internal error: unknown action"
     default:

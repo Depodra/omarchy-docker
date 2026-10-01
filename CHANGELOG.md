@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0 - 2026-10-01
+
+- Edit button on every compose project header: opens the project's compose
+  files — every file compose recorded in the
+  `com.docker.compose.project.config_files` label, base file and overlays
+  together — in Omarchy's default editor. Files that no longer exist are
+  skipped; a project with none left says so in the panel.
+- Keyboard: `e` edits the selected project, or the selected container's.
+- IPC: `editGroup <project>`. Helper: `group files <project>` prints the
+  files Edit would open.
+
 ## 1.1.0 - 2026-10-01
 
 - Group containers by compose project (the `com.docker.compose.project`
