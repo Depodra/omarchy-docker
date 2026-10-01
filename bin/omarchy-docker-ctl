@@ -19,6 +19,9 @@
 # The byte/percent math on those strings happens in Model.js, not here —
 # bash has no floats.
 #
+# `group start|stop|restart <project> [timeout]` acts on a whole compose
+# project through `docker compose -p`.
+#
 # Every read is capped before it is parsed, so a host with a pathological
 # number of containers (or one pathological name) cannot grow this
 # long-running call unboundedly.
@@ -179,6 +182,38 @@ cmd_lifecycle() {
   esac
 }
 
+# A whole compose project at once. `-p` alone finds the project's containers
+# by their labels, so neither the compose file nor the environment it was
+# brought up with (sail's WWWUSER, say) is needed — and since start/stop/
+# restart only act on containers that already exist, nothing is recreated.
+# Compose still goes through its own dependency order.
+#
+# Run from / with COMPOSE_FILE cleared, so a compose file in the shell's
+# working directory or a stray COMPOSE_FILE in its environment can never be
+# read in as the project's definition.
+cmd_group() {
+  local action=$1 project=$2 timeout=${3:-}
+  require_docker
+  # compose's own rule for a project name; anything else never came from it
+  [[ $project =~ ^[a-z0-9][a-z0-9_-]*$ ]] || die "no-project"
+  docker compose version >/dev/null 2>&1 || die "compose-missing"
+  cd / || die "group-${action}-failed"
+
+  local compose=(env -u COMPOSE_FILE docker compose --ansi never --progress quiet -p "$project")
+  case "$action" in
+    start)
+      docker_do "group-start-failed" "${compose[@]}" start
+      ;;
+    stop | restart)
+      [[ $timeout =~ ^[0-9]+$ ]] || timeout=$DEFAULT_STOP_TIMEOUT
+      docker_do "group-${action}-failed" "${compose[@]}" "$action" -t "$timeout"
+      ;;
+    *)
+      die "unknown-action"
+      ;;
+  esac
+}
+
 # Never forced: docker's own rule decides what may go, so nothing running,
 # paused, or restarting can be removed regardless of what a stale panel
 # believes. Plain `docker rm` — never -f, never -v — so the image and every
@@ -264,6 +299,7 @@ main() {
     stop) cmd_lifecycle stop "${1:-}" "${2:-}" ;;
     start | restart | pause | unpause | kill) cmd_lifecycle "$cmd" "${1:-}" ;;
     remove) cmd_remove "${1:-}" ;;
+    group) cmd_group "${1:-}" "${2:-}" "${3:-}" ;;
     logs) cmd_logs "${1:-}" ;;
     shell) cmd_shell "${1:-}" ;;
     open) cmd_open "${1:-}" "${2:-}" ;;

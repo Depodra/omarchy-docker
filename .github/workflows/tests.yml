@@ -58,3 +58,33 @@ jobs:
           fi
           ./bin/omarchy-docker-ctl remove omarchy-docker-ci
           docker ps -a --filter name=omarchy-docker-ci --format '{{.Names}}' | grep -q . && exit 1 || true
+
+      # Project actions find the project by label alone: the compose file
+      # lives in a directory the helper never runs from, and a decoy compose
+      # file plus COMPOSE_FILE in the caller's environment must both be
+      # ignored.
+      - name: Helper drives a compose project
+        run: |
+          proj=$(mktemp -d)
+          printf 'services:\n  db:\n    image: alpine:latest\n    command: sleep 600\n  web:\n    image: alpine:latest\n    command: sleep 600\n    depends_on: [db]\n' > "$proj/compose.yaml"
+          docker compose -p odc-ci -f "$proj/compose.yaml" up -d
+          trap 'docker compose -p odc-ci -f "$proj/compose.yaml" down -t 1 >/dev/null 2>&1 || true' EXIT
+
+          decoy=$(mktemp -d)
+          printf 'services:\n  decoy:\n    image: alpine:latest\n    command: sleep 600\n' > "$decoy/compose.yaml"
+          states() { docker compose -p odc-ci ps -a --format '{{.Service}}={{.State}}' | sort | tr '\n' ' '; }
+
+          ( cd "$decoy" && COMPOSE_FILE="$decoy/compose.yaml" "$GITHUB_WORKSPACE/bin/omarchy-docker-ctl" group stop odc-ci 1 )
+          [[ $(states) == "db=exited web=exited " ]]
+          ( cd "$decoy" && COMPOSE_FILE="$decoy/compose.yaml" "$GITHUB_WORKSPACE/bin/omarchy-docker-ctl" group start odc-ci )
+          [[ $(states) == "db=running web=running " ]]
+          ./bin/omarchy-docker-ctl group restart odc-ci 1
+          [[ $(states) == "db=running web=running " ]]
+          [[ -z $(docker ps -a --filter label=com.docker.compose.service=decoy -q) ]]
+
+          # a name compose itself would never produce is refused before compose runs
+          [[ $(./bin/omarchy-docker-ctl group stop 'Bad;name' 2>&1) == "no-project" ]]
+          if ./bin/omarchy-docker-ctl group start odc-missing 2>/dev/null; then
+            echo "expected start of a nonexistent project to fail" >&2
+            exit 1
+          fi

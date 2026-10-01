@@ -24,7 +24,9 @@ var GLYPH = {
   pause: "󰏤",
   play: "󰐊",
   kill: "󰚌",
-  web: "󰖟"
+  web: "󰖟",
+  collapsed: "󰅂",
+  expanded: "󰅀"
 }
 
 function clean(value) {
@@ -333,6 +335,106 @@ function expandedMeta(row) {
   return parts.join(" · ")
 }
 
+// --------------------------------------------------------------------- groups
+
+// Containers are grouped by compose project — the com.docker.compose.project
+// label compose stamps on everything it creates — rather than by guessing at
+// a shared name prefix: the label is exact, and it is also what lets a whole
+// group be started or stopped with `docker compose -p` without its compose
+// file. A container without one is standalone and listed after the groups.
+function byName(a, b) {
+  return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0)
+}
+
+// The panel's single cursor walks this flat list: a collapsed group adds
+// only its header, an expanded one its header plus one item per member.
+// `grouped` off is the plain list, in docker's own order.
+//   { kind: "group", key, rows, expanded, depth: 0 }
+//   { kind: "container", row, group, depth }   — group is "" when standalone
+function buildItems(rows, grouped, expandedGroups) {
+  var list = Array.isArray(rows) ? rows : []
+  var items = []
+  var i
+
+  if (!grouped) {
+    for (i = 0; i < list.length; i++) items.push({ kind: "container", row: list[i], group: "", depth: 0 })
+    return items
+  }
+
+  // Keyed by a label anyone can set, so no prototype for a project named
+  // "__proto__" or "constructor" to land on.
+  var members = Object.create(null)
+  var keys = []
+  var standalone = []
+  for (i = 0; i < list.length; i++) {
+    var key = list[i].project
+    if (!key) { standalone.push(list[i]); continue }
+    if (!members[key]) { members[key] = []; keys.push(key) }
+    members[key].push(list[i])
+  }
+  keys.sort()
+
+  var expanded = expandedGroups || {}
+  for (i = 0; i < keys.length; i++) {
+    var groupRows = members[keys[i]].slice().sort(byName)
+    var open = Object.prototype.hasOwnProperty.call(expanded, keys[i]) && expanded[keys[i]] === true
+    items.push({ kind: "group", key: keys[i], rows: groupRows, expanded: open, depth: 0 })
+    if (!open) continue
+    for (var m = 0; m < groupRows.length; m++)
+      items.push({ kind: "container", row: groupRows[m], group: keys[i], depth: 1 })
+  }
+
+  for (i = 0; i < standalone.length; i++) items.push({ kind: "container", row: standalone[i], group: "", depth: 0 })
+  return items
+}
+
+function groupIndexOf(items, key) {
+  var list = Array.isArray(items) ? items : []
+  for (var i = 0; i < list.length; i++) if (list[i].kind === "group" && list[i].key === key) return i
+  return -1
+}
+
+// A group's own buttons are what its members would offer in aggregate:
+// Start while anything in it could start, Restart and Stop while anything in
+// it is up. `compose start` only touches what is stopped and `compose stop`
+// only what is up, so a half-up project offers all three.
+function groupActions(rows) {
+  var list = Array.isArray(rows) ? rows : []
+  var canStart = false
+  var anyUp = false
+  for (var i = 0; i < list.length; i++) {
+    var rules = stateRules(list[i].state)
+    if (rules.start) canStart = true
+    if (rules.stopRestart) anyUp = true
+  }
+  var actions = []
+  if (canStart) actions.push({ id: "start", icon: GLYPH.start, tooltip: "Start all", urgent: false })
+  if (anyUp) {
+    actions.push({ id: "restart", icon: GLYPH.restart, tooltip: "Restart all", urgent: false })
+    actions.push({ id: "stop", icon: GLYPH.stop, tooltip: "Stop all", urgent: true })
+  }
+  return actions
+}
+
+// The sum of the members' own CPU/RAM — the same single-core relative CPU
+// figure each row shows, so the header reads as their total.
+function groupStatLine(rows, statsByName) {
+  var list = Array.isArray(rows) ? rows : []
+  var stats = statsByName || {}
+  var cpu = 0
+  var mem = 0
+  var seen = 0
+  for (var i = 0; i < list.length; i++) {
+    if (!Object.prototype.hasOwnProperty.call(stats, list[i].name)) continue
+    var stat = stats[list[i].name]
+    cpu += stat.cpuPercent || 0
+    mem += stat.memUsedBytes || 0
+    seen++
+  }
+  if (seen === 0) return ""
+  return rowStatLine(null, { cpuPercent: cpu, memUsedBytes: mem })
+}
+
 function clampIndex(index, length) {
   if (length <= 0) return 0
   return Math.max(0, Math.min(length - 1, index))
@@ -399,6 +501,11 @@ function errorText(code) {
     case "unpause-failed": return "Could not resume the container"
     case "kill-failed": return "Could not kill the container"
     case "remove-failed": return "Could not remove the container"
+    case "no-project": return "No compose project given"
+    case "compose-missing": return "Docker Compose is not installed"
+    case "group-start-failed": return "Could not start the project"
+    case "group-stop-failed": return "Could not stop the project"
+    case "group-restart-failed": return "Could not restart the project"
     case "unknown-command": return "Internal error: unknown command"
     case "unknown-action": return "Internal error: unknown action"
     default:
@@ -443,6 +550,10 @@ if (typeof module !== "undefined") {
     rowMenuActions: rowMenuActions,
     rowStatLine: rowStatLine,
     expandedMeta: expandedMeta,
+    buildItems: buildItems,
+    groupIndexOf: groupIndexOf,
+    groupActions: groupActions,
+    groupStatLine: groupStatLine,
     clampIndex: clampIndex,
     busyLabel: busyLabel,
     summary: summary,

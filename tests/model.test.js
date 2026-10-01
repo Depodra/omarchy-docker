@@ -218,5 +218,76 @@ assert.strictEqual(Model.errorText("not-removable:weird"), "Docker will not remo
 // docker's own stderr first line, forwarded verbatim by the helper for
 // anything it has no name for.
 assert.strictEqual(Model.errorText("port is already allocated"), "port is already allocated")
+assert.strictEqual(Model.errorText("no-project"), "No compose project given")
+assert.strictEqual(Model.errorText("compose-missing"), "Docker Compose is not installed")
+assert.strictEqual(Model.errorText("group-stop-failed"), "Could not stop the project")
+
+// --------------------------------------------------------------------- groups
+
+const groupRows = Model.parseList([
+  ["shop-web-1", "nginx", "running", "Up 1 minute", "shop", "", "0", ""],
+  ["standalone", "alpine", "exited", "Exited (0) 1 hour ago", "", "", "0", ""],
+  ["shop-db-1", "mysql", "exited", "Exited (0) 1 hour ago", "shop", "", "0", ""],
+  ["api-app-1", "php", "restarting", "Restarting (1) 2 seconds ago", "api", "", "3", ""]
+].map(f => f.join("\x1f")).join("\n"))
+
+const itemLabels = items => items.map(i => i.kind + ":" + (i.kind === "group" ? i.key : i.row.name))
+
+// Collapsed: one header per compose project, alphabetical, then every
+// container without a project on its own.
+const collapsed = Model.buildItems(groupRows, true, {})
+assert.deepStrictEqual(itemLabels(collapsed), ["group:api", "group:shop", "container:standalone"])
+assert.strictEqual(collapsed[1].expanded, false)
+assert.deepStrictEqual(collapsed[1].rows.map(r => r.name), ["shop-db-1", "shop-web-1"])
+assert.strictEqual(collapsed[2].depth, 0)
+assert.strictEqual(collapsed[2].group, "")
+
+// Expanded: the members follow their header, sorted by name, one level in.
+const expandedItems = Model.buildItems(groupRows, true, { shop: true })
+assert.deepStrictEqual(itemLabels(expandedItems),
+  ["group:api", "group:shop", "container:shop-db-1", "container:shop-web-1", "container:standalone"])
+assert.strictEqual(expandedItems[1].expanded, true)
+assert.strictEqual(expandedItems[2].depth, 1)
+assert.strictEqual(expandedItems[2].group, "shop")
+
+// Grouping off is the plain list, in docker's own order.
+const flatItems = Model.buildItems(groupRows, false, { shop: true })
+assert.deepStrictEqual(itemLabels(flatItems),
+  ["container:shop-web-1", "container:standalone", "container:shop-db-1", "container:api-app-1"])
+assert.ok(flatItems.every(i => i.depth === 0 && i.group === ""))
+
+// A project name is a label anyone can set; one that collides with an
+// Object.prototype key must still group like any other.
+const protoItems = Model.buildItems(Model.parseList(
+  ["odd", "alpine", "exited", "", "__proto__", "", "0", ""].join("\x1f")), true, {})
+assert.deepStrictEqual(itemLabels(protoItems), ["group:__proto__"])
+
+assert.deepStrictEqual(Model.buildItems([], true, { gone: true }), [])
+assert.deepStrictEqual(Model.buildItems(null, true, null), [])
+
+assert.strictEqual(Model.groupIndexOf(expandedItems, "shop"), 1)
+assert.strictEqual(Model.groupIndexOf(expandedItems, "nope"), -1)
+
+// A group offers what its members would in aggregate: Start while anything
+// could start, Restart and Stop while anything is up.
+const groupIds = rowsIn => Model.groupActions(rowsIn).map(a => a.id)
+assert.deepStrictEqual(groupIds([{ state: "running" }, { state: "running" }]), ["restart", "stop"])
+assert.deepStrictEqual(groupIds([{ state: "exited" }, { state: "created" }]), ["start"])
+assert.deepStrictEqual(groupIds([{ state: "running" }, { state: "exited" }]), ["start", "restart", "stop"])
+assert.deepStrictEqual(groupIds([{ state: "paused" }]), ["restart", "stop"])
+// Nothing in a group of dead containers can be started or stopped.
+assert.deepStrictEqual(groupIds([{ state: "dead" }]), [])
+assert.deepStrictEqual(groupIds([]), [])
+
+// A group's CPU/RAM is the sum of its members' — the same single-core
+// relative CPU figure each row shows, so the header reads as their total.
+const groupStats = {
+  "shop-web-1": { cpuPercent: 10.2, memUsedBytes: 1024 * 1024 * 100 },
+  "shop-db-1": { cpuPercent: 2.3, memUsedBytes: 1024 * 1024 * 50 },
+  "api-app-1": { cpuPercent: 99, memUsedBytes: 1024 * 1024 * 999 }
+}
+assert.strictEqual(Model.groupStatLine(collapsed[1].rows, groupStats), "cpu 13% · 150 MiB")
+assert.strictEqual(Model.groupStatLine(collapsed[1].rows, {}), "")
+assert.strictEqual(Model.groupStatLine(collapsed[1].rows, undefined), "")
 
 console.log("All Model.js tests passed")
